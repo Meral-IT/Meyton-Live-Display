@@ -143,7 +143,7 @@ function render(snapshot) {
     nodes.append(...row.map(lane => tile(known.get(lane) || {lane, target: null}, profile, snapshot.sponsors || [])));
     return nodes;
   }));
-  const connected = Object.values(snapshot.sources).every(source => source.state === "connected");
+  const connected = Object.entries(snapshot.sources).every(([name, source]) => source.state === "connected" || (name === "sdf" && source.state === "disabled"));
   const status = document.getElementById("connection");
   status.className = connected ? "connected" : "degraded";
   status.textContent = connected ? (snapshot.sources.demo ? "Demobetrieb · simulierte Daten" : "Datenquellen verbunden") : "Verbindung eingeschränkt";

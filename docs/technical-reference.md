@@ -25,7 +25,8 @@ Copy [`.env.example`](../.env.example) for a new installation. Compose injects s
 | `SM_DB_HOST`, `SM_DB_USER`, `SM_DB_PASS` | Required, nonempty | SSMDB2 connection credentials. |
 | `SM_DB_NAME` | `SSMDB2` | Vendor database name. |
 | `SM_DB_PORT` | `3306` | Vendor SQL port. |
-| `SM_SMB_HOST`, `SM_SMB_USER`, `SM_SMB_PASS` | Required for SMB ingestion | SMB connection credentials; optional with a local SDF directory. |
+| `SM_SDF_ENABLED` | `true`; `true` or `false` | Set `false` to disable both SMB and local SDF ingestion. SSMDB2 polling and LANA occupancy remain active. |
+| `SM_SMB_HOST`, `SM_SMB_USER`, `SM_SMB_PASS` | Required for SMB ingestion | SMB connection credentials; optional with a local SDF directory or when SDF is disabled. |
 | `SM_SDF_DIRECTORY` | Empty | Local SDF directory; takes precedence over SMB. Set the absolute host path in `.env` and uncomment the worker's local SDF environment setting and bind mount in `compose.yaml`; the worker reads its read-only mount at `/sdf`. Without Docker, set the directory the worker can access directly. |
 | `SM_SMB_PORT` | `445` | SMB port. |
 | `SM_SMB_SHARE` | `xml_result` | Result export share. |
@@ -97,6 +98,28 @@ Live occupancy requires no start-list configuration. The worker discovers positi
 SSMDB2 is a result archive, not a live occupancy table. Its `Status` column contains competition flags; neither that column nor result age proves that a stand was cleared. Initial occupied state with the same shooter as an old archived target cannot establish a new session from the LANA name alone. That case still needs a confirmed clear or a new result export. Clear tracking persists in SQLite across worker and backend restarts. Live occupancy becomes unknown until the worker confirms a fresh connection.
 
 **End-to-end physical-shot latency below 500 ms is a commissioning target, not an independently verified guarantee.** SMB registration and synthetic replay cannot prove it. If SDF omits practice, is delayed, or DB confirmation is delayed, the selected sources may fail that gate. No multicast decoder is included.
+
+### Compare SDF with DB-only results
+
+Set `SM_SDF_ENABLED=false` in `.env` and recreate the worker with `docker compose up -d --build --pull never worker`. Set it back to `true` to restore SDF ingestion. Disabled SDF is shown explicitly in source status and does not mark the display degraded. This controls this application's reader; ShootMaster can keep exporting XML. DB-only mode retains the existing one-second reconciliation interval.
+
+For simultaneous comparison from this source checkout, start two isolated Compose projects using the same vendor credentials in `.env`:
+
+```sh
+SM_SDF_ENABLED=true HTTP_PORT=8081 HTTPS_PORT=8441 docker compose -p meyton-sdf up -d --build --pull never
+SM_SDF_ENABLED=false HTTP_PORT=8082 HTTPS_PORT=8442 docker compose -p meyton-db up -d --build --pull never
+```
+
+Open `http://localhost:8081/display/alles` and `http://localhost:8082/display/alles` side by side (replace localhost with the Docker host when viewing remotely). Each project has its own results, profiles, and Caddy volumes; never share the results volume between workers. Use matching profile settings and wait for both DB sources to connect before firing new shots: existing archives are not backfilled. Two stacks double DB and LANA readers, so this comparison adds vendor load.
+
+Record the same shooting interval in two terminals using the existing timing tool:
+
+```sh
+.venv/bin/python tools/validate_live.py --url 'http://localhost:8081/display/alles?obs=1' --seconds 120 --output test-results/sdf-timing.csv
+.venv/bin/python tools/validate_live.py --url 'http://localhost:8082/display/alles?obs=1' --seconds 120 --output test-results/db-timing.csv
+```
+
+Include practice and scored shots and verify vendor clock synchronization. The SDF-enabled stack may still receive some shots through DB reconciliation; check the CSV's `source` column. Stop the comparison projects afterward with `docker compose -p meyton-sdf down` and `docker compose -p meyton-db down`; their volumes are retained.
 
 ## Local result database
 

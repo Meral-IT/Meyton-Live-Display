@@ -20,8 +20,8 @@ Live shooting results for Meyton ShootMaster SSMDB2, displayed in a German-langu
 
 - Docker Engine with Docker Compose v2, or Docker Desktop with Compose.
 - A Linux container host supporting `amd64` or `arm64`.
-- For live results: access to the SSMDB2 database, the SMB result share or a local SDF directory, and the LANA live-occupancy interface. Use read-only database and SMB accounts.
-- SDF result export enabled in the Meyton Kontrollzentrum. See [source commissioning](docs/technical-reference.md#sources-and-commissioning).
+- For live results: access to the SSMDB2 database and the LANA live-occupancy interface; SDF ingestion additionally needs the SMB result share or a local SDF directory. Use read-only database and SMB accounts.
+- SDF result export enabled in the Meyton Kontrollzentrum, unless using `SM_SDF_ENABLED=false` for DB-only results. See [side-by-side performance comparison](docs/technical-reference.md#compare-sdf-with-db-only-results).
 
 ### 1. Get the repository
 

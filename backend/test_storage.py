@@ -1,6 +1,7 @@
 """Durable collection, retention and read-only display regression checks."""
 
 import copy
+import os
 from datetime import datetime
 import sqlite3
 import tempfile
@@ -17,6 +18,37 @@ from app.storage import ResultStore, connect_reader, read_snapshot, retention_da
 from app.worker import Worker
 from app.sources import read_db_index
 from test_app import target
+
+
+class WorkerSourceChecks(unittest.TestCase):
+    def test_sdf_switch_skips_reader_and_persists_disabled_status(self):
+        for setting in (None, "true", "false"):
+            with self.subTest(setting=setting), tempfile.TemporaryDirectory() as directory, \
+                 patch.dict(os.environ), patch("app.sources.SDFReader") as sdf, \
+                 patch("app.sources.LANAReader") as lana, patch("app.worker.threading.Thread") as thread:
+                os.environ.pop("SM_SDF_ENABLED", None)
+                if setting is not None:
+                    os.environ["SM_SDF_ENABLED"] = setting
+                path = Path(directory) / "results.sqlite3"
+                worker = Worker(path)
+                worker.stop.set()  # Inspect startup without connecting to vendor services.
+                worker.run()
+                enabled = setting != "false"
+                self.assertEqual(sdf.call_count, int(enabled))
+                lana.assert_called_once()
+                self.assertEqual(thread.call_count, 3 if enabled else 2)
+                self.assertEqual(thread.call_args_list[0].kwargs["target"], worker.poll)
+                reader = connect_reader(path)
+                try:
+                    _, sources, _ = read_snapshot(reader)
+                finally:
+                    reader.close()
+                self.assertEqual(sources["sdf"]["state"], "starting" if enabled else "disabled")
+                self.assertEqual(sources["db"]["state"], "starting")
+                self.assertEqual(sources["lana"]["state"], "starting")
+        with patch.dict(os.environ, {"SM_SDF_ENABLED": "typo"}):
+            with self.assertRaisesRegex(ValueError, "SM_SDF_ENABLED"):
+                Worker("unused.sqlite3")
 
 
 class StorageChecks(unittest.TestCase):

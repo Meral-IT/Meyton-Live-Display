@@ -14,6 +14,10 @@ from .storage import ResultStore, connect_reader
 
 class Worker:
     def __init__(self, path):
+        sdf_enabled = os.getenv("SM_SDF_ENABLED", "true").strip().lower()
+        if sdf_enabled not in ("true", "false"):
+            raise ValueError("SM_SDF_ENABLED must be true or false")
+        self.sdf_enabled = sdf_enabled == "true"
         self.store = ResultStore(path)
         self.stop = threading.Event()
         self.ready = threading.Event()
@@ -128,10 +132,14 @@ class Worker:
         self.store.cleanup()
         self.store.start_sources(("db", "sdf", "lana"))
         self.store.heartbeat()
-        sdf = SDFReader(self.stop, lambda targets: self.enqueue("targets", targets), self.status)
         lana = LANAReader(self.stop, lambda lanes: self.enqueue("occupancy", lanes), self.status)
-        threads = [threading.Thread(target=run, daemon=True) for run in (
-            self.poll, lambda: self.after_baseline(sdf.run), lambda: self.after_baseline(lana.run))]
+        sources = [self.poll, lambda: self.after_baseline(lana.run)]
+        if self.sdf_enabled:
+            sdf = SDFReader(self.stop, lambda targets: self.enqueue("targets", targets), self.status)
+            sources.append(lambda: self.after_baseline(sdf.run))
+        else:
+            self.store.source_status("sdf", "disabled", "SDF deaktiviert (SM_SDF_ENABLED=false)")
+        threads = [threading.Thread(target=run, daemon=True) for run in sources]
         for thread in threads:
             thread.start()
         heartbeat_due, cleanup_due = time.monotonic() + 5, time.monotonic() + 60
