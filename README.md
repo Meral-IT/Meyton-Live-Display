@@ -1,5 +1,7 @@
 # Meyton Live Display
 
+![Demonstration](./doc/demo.gif)
+
 > **Notice:** This project is a vibe coding experiment.
 
 Live shooting results for Meyton ShootMaster SSMDB2, displayed in a German-language browser interface. Use it on range screens, individual stand displays, or as an OBS browser source.
