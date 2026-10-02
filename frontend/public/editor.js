@@ -64,7 +64,8 @@ function draft() {
     fields: [...byId("field-options").querySelectorAll("input:checked")].map(input => input.value),
     hits: byId("hits").value, zoom: byId("zoom").value, practice: byId("practice").checked,
     discipline_inline: byId("discipline-inline").checked,
-    shot_highlight: byId("shot-highlight").value, hide_unavailable: byId("hide-unavailable").checked};
+    shot_highlight: byId("shot-highlight").value, hide_unavailable: byId("hide-unavailable").checked,
+    confetti_enabled: byId("confetti-enabled").checked, confetti_threshold: byId("confetti-threshold").valueAsNumber};
 }
 
 async function updatePreview() {
@@ -95,6 +96,8 @@ function select(profile, isNew = false) {
   byId("discipline-inline").checked = profile.discipline_inline ?? false;
   byId("shot-highlight").value = profile.shot_highlight ?? "none";
   byId("hide-unavailable").checked = profile.hide_unavailable ?? false;
+  byId("confetti-enabled").checked = profile.confetti_enabled ?? false;
+  byId("confetti-threshold").value = profile.confetti_threshold ?? 10.5;
   byId("delete-profile").disabled = isNew || profiles.length < 2;
   byId("duplicate-profile").disabled = isNew;
   byId("settings-heading").textContent = isNew ? "Neues Profil" : "Profil bearbeiten";

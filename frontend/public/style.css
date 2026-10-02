@@ -83,7 +83,6 @@ h2 { font-size: 17px; margin: 0 0 14px; }
 .profile-choice.selected { background: #e1efe6; border-color: #b9d4c4; color: #126b46; }
 #new-profile { width: 100%; margin-top: 12px; }
 .profile-settings { background: #fff; padding: 24px; border-radius: 9px; border: 1px solid #dce6df; }
-.sponsor-settings, .logo-settings { border-top: 1px solid #e3ebe6; margin-top: 26px; padding-top: 24px; }
 .sponsor-settings .form-note, .logo-settings .form-note { margin-bottom: 16px; }
 .logo-preview { max-width: 100%; max-height: 80px; object-fit: contain; margin-bottom: 16px; }
 #sponsor-status, #logo-status { font-size: 12px; }
@@ -122,6 +121,7 @@ input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px;
 iframe { position: absolute; width: 1920px; height: 1080px; border: 0; transform-origin: top left; }
 .profile-preview p { font-size: 11px; color: #73847a; line-height: 1.65; margin: 11px 0 25px; }
 .stream-link { display: flex; flex-wrap: wrap; gap: 8px; background: #fff; border: 1px solid #dce6df; border-radius: 8px; padding: 17px; }
+.stream-link.logo-settings, .stream-link.sponsor-settings { display: block; margin-top: 16px; }
 .stream-link label { width: 100%; margin-bottom: 3px; }
 .stream-link input { flex: 1; font-size: 12px; }
 .certificate-download { margin-top: 16px; }

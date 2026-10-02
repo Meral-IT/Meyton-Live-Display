@@ -41,6 +41,8 @@ class Profile(BaseModel):
     discipline_inline: bool = False
     shot_highlight: Literal["none", "background", "border"] = "none"
     hide_unavailable: bool = False
+    confetti_enabled: bool = False
+    confetti_threshold: float = Field(default=10.5, ge=0, le=10.9, allow_inf_nan=False)
 
     @field_validator("name")
     @classmethod

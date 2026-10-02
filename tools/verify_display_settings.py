@@ -28,6 +28,7 @@ def main():
         page.on("framenavigated", lambda frame: navigations.append(frame.url) if frame == page.main_frame else None)
 
         def respond(route):
+            assert urlsplit(route.request.url).netloc == "meyton.test"  # No runtime CDN or other remote requests.
             path = urlsplit(route.request.url).path
             if path == "/api/events":
                 route.fulfill(content_type="text/event-stream", body=": test\n\n")
@@ -122,18 +123,97 @@ def main():
         page.wait_for_timeout(30)
         assert len(navigations) == count + 1  # The fresh initial snapshot does not loop.
 
+        data["profile"].update(hide_unavailable=False, confetti_enabled=True, confetti_threshold=10.5)
+        data["rows"][0][1]["target"] = None
+        page.goto("http://meyton.test/display/alles?obs=2")
+        page.wait_for_selector(".range-tile")
+        assert page.locator("canvas").count() == 0  # Initial qualifying scores remain quiet.
+        page.evaluate("() => { window.bursts = []; const original = window.confetti; window.confetti = options => { window.bursts.push(options); original(options); }; }")
+
+        def live():
+            page.evaluate("data => window.testStream.dispatchEvent(new MessageEvent('snapshot', {data: JSON.stringify(data)}))", data)
+            page.wait_for_timeout(30)
+
+        def shoot(value, **changes):
+            hit = {**target["latest"], "number": target["latest"]["number"] + 1,
+                   "score": {"value": value, "scale": 10, "unit": "ZehntelRing"}, **changes}
+            target["latest"] = hit
+            target["shots"].append(hit)
+
+        live()
+        assert page.evaluate("bursts.length") == 0  # Initial SSE snapshot also stays quiet.
+        shoot(104)
+        live()
+        assert page.evaluate("bursts.length") == 0, page.evaluate("bursts")
+        shoot(105)
+        live()
+        assert page.evaluate("bursts.length") == 1
+        assert page.locator("canvas").count() == 1  # The real, locally served library renders.
+        assert page.locator("canvas").evaluate("node => getComputedStyle(node).pointerEvents") == "none"
+        bounds = page.locator('[data-lane="1"]').bounding_box()
+        assert bounds["x"] <= page.evaluate("bursts[0].position.x") <= bounds["x"] + bounds["width"]
+        live()
+        assert page.evaluate("bursts.length") == 1
+        shoot(109)
+        live()
+        assert page.evaluate("bursts.length") == 2
+        data["profile"]["confetti_enabled"] = False
+        shoot(109)
+        live()
+        data["profile"]["confetti_enabled"] = True
+        live()
+        assert page.evaluate("bursts.length") == 2  # Enabling does not replay scores.
+        shoot(109, invalid=True)
+        live()
+        shoot(109, invalid=False, score=None)
+        live()
+        assert page.evaluate("bursts.length") == 2
+        data["profile"]["confetti_threshold"] = 0
+        shoot(0)
+        live()
+        assert page.evaluate("bursts.length") == 3
+        data["profile"]["confetti_threshold"] = 10.9
+        shoot(108)
+        live()
+        assert page.evaluate("bursts.length") == 3
+        data["profile"]["confetti_threshold"] = 10.5
+        shoot(105)
+        shoot(108)
+        shoot(102)
+        live()
+        assert page.evaluate("bursts.length") == 5  # Coalesced snapshots still celebrate each candidate.
+        page.emulate_media(reduced_motion="reduce")
+        shoot(109)
+        live()
+        assert page.evaluate("bursts.length") == 5
+        page.emulate_media(reduced_motion="no-preference")
+        shoot(109, score=None)
+        live()
+        assert page.evaluate("bursts.length") == 5
+        target["latest"]["score"] = {"value": 109, "scale": 10, "unit": "ZehntelRing"}
+        live()
+        assert page.evaluate("bursts.length") == 6  # Delayed score confirmation can celebrate a new shot.
+        live()
+        assert page.evaluate("bursts.length") == 6
+
         page.goto("http://meyton.test/admin")
         page.wait_for_selector(".profile-choice")
         page.locator("#shot-highlight").select_option("border")
         page.locator("#hide-unavailable").check()
+        page.locator("#confetti-enabled").check()
+        page.locator("#confetti-threshold").fill("10.9")
         page.locator("#save-profile").click()
         page.locator("#save-status").get_by_text("Gespeichert · Anzeigen aktualisiert", exact=True).wait_for()
         assert data["profile"]["shot_highlight"] == "border"
         assert data["profile"]["hide_unavailable"] is True
+        assert data["profile"]["confetti_enabled"] is True
+        assert data["profile"]["confetti_threshold"] == 10.9
         page.reload()
         page.wait_for_selector(".profile-choice")
         assert page.locator("#shot-highlight").input_value() == "border"
         assert page.locator("#hide-unavailable").is_checked()
+        assert page.locator("#confetti-enabled").is_checked()
+        assert page.locator("#confetti-threshold").input_value() == "10.9"
         data["runtime_id"] = "runtime-three"
         with page.expect_navigation():
             page.locator("#save-profile").click()
@@ -144,7 +224,7 @@ def main():
             assert page.locator("#shot-highlight").evaluate("node => { const r=node.getBoundingClientRect(), f=node.closest('form').getBoundingClientRect(); return r.left>=f.left && r.right<=f.right; }")
         assert not errors, errors
         browser.close()
-    print("Settings, shot highlights, availability, and runtime page reloads for displays/editors passed.")
+    print("Settings, shot highlights, availability, runtime reloads and local live-shot confetti passed.")
 
 
 if __name__ == "__main__":

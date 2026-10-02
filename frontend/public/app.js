@@ -135,7 +135,7 @@ function tile(entry, profile, sponsors) {
   return card;
 }
 
-function render(snapshot) {
+function render(snapshot, liveUpdate = false) {
   if (checkRuntime(snapshot.runtime_id)) return;
   snapshot = previewSnapshot || snapshot;
   updateLogo(snapshot.logo);
@@ -146,11 +146,21 @@ function render(snapshot) {
   document.title = `${title} · Meyton Live Display`;
   const grid = document.getElementById("ranges");
   const known = new Map(snapshot.rows.flat().map(entry => [entry.lane, entry]));
+  const celebrations = [];
   for (const entry of known.values()) {
     const state = entry.target;
     const key = state?.shot_count ? JSON.stringify([state.id, state.position, state.shot_count, state.last_shot_at]) : null;
     const previous = shotHighlights.get(entry.lane);
-    shotHighlights.set(entry.lane, {key, until: previous && key && key !== previous.key ? Date.now() + 3000 : key ? previous?.until || 0 : 0});
+    const seen = previous && previous.targetId === state?.id ? previous.seen : new Set();
+    for (const hit of [...(state?.shots || []), ...(state?.latest ? [state.latest] : [])]) {
+      const hitKey = JSON.stringify([hit.position, hit.number, hit.timestamp]);
+      if (liveUpdate && previous && !seen.has(hitKey) && profile.confetti_enabled && !hit.invalid &&
+          hit.score && ["Ring", "ZehntelRing"].includes(hit.score.unit) &&
+          hit.score.value / hit.score.scale >= (profile.confetti_threshold ?? 10.5)) celebrations.push(entry.lane);
+      // A new concealed shot can qualify later when SSMDB2 confirms its score.
+      if (!liveUpdate || !profile.confetti_enabled || hit.score || hit.invalid) seen.add(hitKey);
+    }
+    shotHighlights.set(entry.lane, {key, seen, targetId: state?.id, until: previous && key && key !== previous.key ? Date.now() + 3000 : key ? previous?.until || 0 : 0});
   }
   const liveConnected = ["worker", "local_db"].every(name => snapshot.sources[name]?.state === "connected") &&
     ["lana", "demo"].some(name => snapshot.sources[name]?.state === "connected");
@@ -165,6 +175,13 @@ function render(snapshot) {
     nodes.append(...row.map(lane => tile(known.get(lane) || {lane, target: null}, profile, snapshot.sponsors || [])));
     return nodes;
   }));
+  if (!matchMedia("(prefers-reduced-motion: reduce)").matches) for (const lane of celebrations) {
+    const card = grid.querySelector(`[data-lane="${lane}"]`);
+    if (card) {
+      const bounds = card.getBoundingClientRect();
+      window.confetti({size: 2, position: {x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 3}, fade: true});
+    }
+  }
   const connected = Object.entries(snapshot.sources).every(([name, source]) => source.state === "connected" || (name === "sdf" && source.state === "disabled"));
   const status = document.getElementById("connection");
   status.className = connected ? "connected" : "degraded";
@@ -206,7 +223,7 @@ async function connect(id) {
   stream = new EventSource(`/api/events?profile=${encodeURIComponent(id)}${range === null ? "" : `&lane=${range}`}`);
   stream.addEventListener("snapshot", event => {
     const data = JSON.parse(event.data);
-    render(data);
+    render(data, true);
     const existing = profiles.find(profile => profile.id === data.profile.id);
     if (!existing || existing.name !== data.profile.name) loadProfiles().then(() => { document.getElementById("profiles").value = id; });
   });

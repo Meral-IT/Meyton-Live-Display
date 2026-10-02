@@ -420,10 +420,17 @@ class ProfileAndAPIChecks(unittest.TestCase):
             self.assertFalse(store.get("alles").discipline_inline)
             self.assertEqual(store.get("alles").shot_highlight, "none")
             self.assertFalse(store.get("alles").hide_unavailable)
+            self.assertFalse(store.get("alles").confetti_enabled)
+            self.assertEqual(store.get("alles").confetti_threshold, 10.5)
             for changes in [{"rows": [[1], [1]]}, {"rows": [[]]}, {"rows": [[0]]}, {"name": " "}, {"theme": {"text": "url(bad)"}}, {"discipline_inline": "sideways"}, {"shot_highlight": "flash"}, {"hide_unavailable": "maybe"}]:
                 with self.assertRaises(ValueError):
                     Profile.model_validate({**store.profiles[0].model_dump(), **changes})
             before = path.read_bytes()
+            for value in (-0.1, 11, float("nan"), float("inf")):
+                with self.assertRaises(ValueError):
+                    Profile.model_validate({**store.profiles[0].model_dump(), "confetti_threshold": value})
+            for value in (0, 10.5, 10.9):
+                self.assertEqual(Profile.model_validate({**store.profiles[0].model_dump(), "confetti_threshold": value}).confetti_threshold, value)
             with patch("app.profiles.os.replace", side_effect=OSError("disk unavailable")):
                 with self.assertRaises(OSError):
                     store.save(store.profiles[:1])
@@ -433,11 +440,15 @@ class ProfileAndAPIChecks(unittest.TestCase):
             store.profiles[0].discipline_inline = True
             store.profiles[0].shot_highlight = "border"
             store.profiles[0].hide_unavailable = True
+            store.profiles[0].confetti_enabled = True
+            store.profiles[0].confetti_threshold = 10.9
             store.save(store.profiles)
             self.assertEqual(ProfileStore(path).get("alles").name, "Updated")
             self.assertTrue(ProfileStore(path).get("alles").discipline_inline)
             self.assertEqual(ProfileStore(path).get("alles").shot_highlight, "border")
             self.assertTrue(ProfileStore(path).get("alles").hide_unavailable)
+            self.assertTrue(ProfileStore(path).get("alles").confetti_enabled)
+            self.assertEqual(ProfileStore(path).get("alles").confetti_threshold, 10.9)
 
     def test_api_auth_persistence_and_source_failure(self):
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"SM_ADMIN_PASSWORD": "test-password"}):

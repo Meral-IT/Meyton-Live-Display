@@ -40,10 +40,13 @@ def main():
                     assert header["height"] == (55 if width <= 700 else 66)
                     assert header["x"] + header["width"] <= width + 1
                     if path == "/admin":
-                        for control in ("#upload-logo", "#delete-logo"):
+                        assert page.locator(".profile-preview .logo-settings").count() == 1
+                        assert page.locator(".profile-preview .sponsor-settings").count() == 1
+                        assert page.locator(".logo-settings").evaluate("node => node.previousElementSibling.querySelector('#obs-url') && node.nextElementSibling.classList.contains('certificate-download')")
+                        for control in ("#upload-logo", "#delete-logo", "#sponsor-files", "#upload-sponsors"):
                             assert page.locator(control).evaluate("""node => {
                                 const bounds = node.getBoundingClientRect();
-                                const card = node.closest('.profile-settings').getBoundingClientRect();
+                                const card = node.closest('.stream-link').getBoundingClientRect();
                                 return bounds.left >= card.left && bounds.right <= card.right;
                             }"""), (width, control)
                     if width > 700:
