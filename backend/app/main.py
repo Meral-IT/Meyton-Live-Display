@@ -174,17 +174,31 @@ def create_app(profile_path=None, *, result_path=None):
         async def stream():
             listener = asyncio.Event()
             runtime.listeners.add(listener)
+            previous = None
+            loop = asyncio.get_running_loop()
+            heartbeat_at = loop.time() + 10
             try:
                 while not await request.is_disconnected():
                     listener.clear()
                     if not runtime.profiles.get(profile):
                         yield 'event: deleted\ndata: {}\n\n'
                         return
-                    payload = json.dumps(runtime.snapshot(profile, lane=lane), ensure_ascii=False, separators=(",", ":"))
-                    yield f"event: snapshot\ndata: {payload}\n\n"
+                    snapshot = runtime.snapshot(profile, lane=lane)
+                    meaningful = {key: value for key, value in snapshot.items() if key not in ("revision", "server_time")}
+                    meaningful["sources"] = {
+                        name: {key: value for key, value in source.items() if key != "last_check_at"}
+                        for name, source in snapshot["sources"].items()
+                    }
+                    current = json.dumps(meaningful, ensure_ascii=False, separators=(",", ":"))
+                    if current != previous:
+                        previous = current
+                        payload = json.dumps(snapshot, ensure_ascii=False, separators=(",", ":"))
+                        heartbeat_at = loop.time() + 10
+                        yield f"event: snapshot\ndata: {payload}\n\n"
                     try:
-                        await asyncio.wait_for(listener.wait(), 10)
+                        await asyncio.wait_for(listener.wait(), max(0, heartbeat_at - loop.time()))
                     except TimeoutError:
+                        heartbeat_at = loop.time() + 10
                         yield ": heartbeat\n\n"
             finally:
                 runtime.listeners.discard(listener)
