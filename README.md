@@ -126,6 +126,8 @@ For OBS, add a browser source with a URL such as `http://localhost/display/alles
 
 ## Deployment guide
 
+For a container-only installation on openSUSE Leap, see the [openSUSE Leap setup guide](doc/opensuse-leap-setup.md).
+
 ### Select an image channel or version
 
 Both images support `linux/amd64` and `linux/arm64`. Worker and backend share `ghcr.io/meral-it/meyton-live-display-backend`; the frontend uses `ghcr.io/meral-it/meyton-live-display-frontend`.
