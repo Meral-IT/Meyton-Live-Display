@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#077b61">
+  <title>Meyton · Live Display</title>
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body class="display">
+  <header class="display-header">
+    <a class="brand" href="/" aria-label="Meyton Live Display Startseite"><span class="brand-mark" aria-hidden="true">◎</span><span>MEYTON<small>LIVE DISPLAY</small></span></a>
+    <div class="display-title"><h1 id="profile-name">Schussbild</h1><span id="connection" role="status">Verbinde …</span></div>
+    <nav class="display-actions" aria-label="Anzeige">
+      <label class="sr-only" for="profiles">Profil</label><select id="profiles"></select>
+      <button id="fullscreen" type="button" title="Vollbild">Vollbild</button>
+      <a class="button secondary" href="/admin">Profile bearbeiten</a>
+    </nav>
+    <time id="clock" aria-label="Uhrzeit"></time>
+  </header>
+  <main id="ranges" class="range-grid" aria-label="Schießstände"></main>
+  <footer class="display-footer"><span id="source-status" role="status">Datenquellen werden verbunden …</span><span>Schussbild · LG / LP 10 m / KK 50 m</span></footer>
+</body>
+</html>

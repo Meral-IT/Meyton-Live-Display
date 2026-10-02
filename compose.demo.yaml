@@ -1,0 +1,9 @@
+# Replace the worker command; keep the existing results and profiles volumes.
+services:
+  worker:
+    command: ["python", "-m", "app.demo_worker"]
+    environment:
+      PROFILE_PATH: /profiles/profiles.json
+      SM_DEMO_SHOT_INTERVAL: ${SM_DEMO_SHOT_INTERVAL:-3}
+    volumes:
+      - profiles:/profiles:ro

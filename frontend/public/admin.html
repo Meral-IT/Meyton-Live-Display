@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Profile · Meyton Live Display</title>
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/editor.js"></script>
+</head>
+<body class="editor">
+  <header class="editor-header"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">◎</span><span>MEYTON<small>LIVE DISPLAY</small></span></a><h1>Anzeigeprofile</h1><a class="button secondary" href="/">Zur Anzeige</a></header>
+  <main class="editor-layout">
+    <aside class="profile-sidebar"><h2>Profile</h2><div id="profile-list" aria-label="Gespeicherte Profile"></div><button type="button" id="new-profile">Neues Profil</button></aside>
+    <section class="profile-settings" aria-labelledby="settings-heading">
+      <div class="section-heading"><div><span class="eyebrow">LAYOUT & DARSTELLUNG</span><h2 id="settings-heading">Profil bearbeiten</h2></div><span id="save-status" role="status" aria-live="polite"></span></div>
+      <form id="profile-form">
+        <div class="form-pair"><label>Name<input id="name" maxlength="64" required></label><label>Profil-ID<input id="profile-id" maxlength="48" pattern="[a-z0-9][a-z0-9-]{0,47}" required><small>Teil der festen Anzeige-URL.</small></label></div>
+        <label>Stände pro Zeile<textarea id="rows" rows="3" required aria-describedby="rows-help"></textarea><small id="rows-help">Eine Zeile pro Bildschirmreihe. Standnummern durch Kommas trennen, z. B. 1, 2, 3, 4, 5.</small></label>
+        <fieldset><legend>Farben</legend><div class="color-options"><label>Hintergrund<input id="color-background" type="color"></label><label>Kachel<input id="color-tile" type="color"></label><label>Schrift<input id="color-text" type="color"></label><label>Scheibe<input id="color-target" type="color"></label><label>Akzent<input id="color-accent" type="color"></label></div></fieldset>
+        <fieldset><legend>Sichtbare Informationen</legend><div class="field-options" id="field-options"></div></fieldset>
+        <label class="checkbox"><input id="discipline-inline" type="checkbox">Disziplin hinter Standnummer anzeigen</label>
+        <div class="form-pair"><label>Treffer im Schussbild<select id="hits"><option value="series">Aktuelle Serie</option><option value="all">Alle Treffer der aktuellen Stellung</option></select></label><label>Scheibenausschnitt<select id="zoom"><option value="auto">Automatisch um Treffer zentrieren</option><option value="full">Vollständige Scheibe</option></select></label></div>
+        <label class="checkbox"><input id="practice" type="checkbox">Probestellung anzeigen, wenn zuletzt dort geschossen wurde</label>
+        <p class="form-note">Serienzuordnung und verdeckte Treffer werden mit SSMDB2 abgeglichen. Eigene Scheibentypen zeigen Ergebnisse ohne Schussbild.</p>
+        <div class="form-actions"><button type="submit" id="save-profile">Profil speichern</button><button type="button" id="duplicate-profile" class="secondary">Duplizieren</button><button type="button" id="delete-profile" class="danger">Löschen</button></div>
+      </form>
+      <section class="sponsor-settings" aria-labelledby="sponsors-heading">
+        <h2 id="sponsors-heading">Sponsorenbilder</h2>
+        <p class="form-note">Für alle Profile. Leere Stände zeigen ein zufälliges Bild. Optionalen Text je Bild eingeben und speichern; leer lassen für ein Bild ohne Text. Ohne Bilder bleibt die bisherige Anzeige.</p>
+        <form id="sponsor-form">
+          <label>Bilder auswählen<input id="sponsor-files" type="file" accept="image/png,image/jpeg,image/svg+xml,.png,.jpg,.jpeg,.svg" multiple required><small>PNG, JPEG oder SVG · maximal 5 MiB pro Bild.</small></label>
+          <button id="upload-sponsors" type="submit">Bilder hochladen</button>
+        </form>
+        <p id="sponsor-status" role="status" aria-live="polite"></p>
+        <div id="sponsor-list" class="sponsor-list"></div>
+      </section>
+    </section>
+    <section class="profile-preview" aria-labelledby="preview-heading"><div class="section-heading"><h2 id="preview-heading">Vorschau</h2><a id="open-display" target="_blank" rel="noopener">Anzeige öffnen</a></div><div class="preview-frame"><iframe id="preview" title="Vorschau des Anzeigeprofils"></iframe></div><p>Vorschau mit 1920 × 1080. Änderungen erscheinen ohne Speichern; neue Stände werden nach dem Speichern eingelesen.</p><div class="stream-link"><label for="obs-url">OBS-Browserquelle</label><input id="obs-url" readonly><button type="button" id="copy-url" class="secondary">URL kopieren</button></div><p>Browserquelle: 1920 × 1080. Für HTTPS muss die lokale Zertifizierungsstelle auf dem OBS-Rechner vertraut sein.</p></section>
+  </main>
+</body>
+</html>

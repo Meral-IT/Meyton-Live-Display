@@ -1,0 +1,58 @@
+{
+    admin off
+    auto_https disable_redirects
+}
+
+(display) {
+    root * /srv
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy same-origin
+    }
+    @app_content not path /api/sponsors/*
+    header @app_content Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'self'"
+    @public_api {
+        path /api/profiles /api/snapshot /api/events /api/ranges/* /api/sponsors/*
+        method GET
+    }
+    handle @public_api {
+        reverse_proxy backend:8000 {
+            flush_interval -1
+        }
+    }
+    @display_page path /display/* /range/*
+    handle @display_page {
+        rewrite * /index.html
+        file_server
+    }
+    handle {
+        file_server
+    }
+}
+
+:80 {
+    handle /api/admin/* {
+        respond "HTTPS required for profile administration" 426
+    }
+    handle /admin* {
+        redir https://{host}:{$HTTPS_PORT:443}{uri} 308
+    }
+    import display
+}
+
+{$DISPLAY_ADDRESS:localhost} {
+    tls internal
+    handle /api/admin/* {
+        reverse_proxy backend:8000 {
+            flush_interval -1
+        }
+    }
+    handle /admin* {
+        forward_auth backend:8000 {
+            uri /api/admin/auth
+        }
+        rewrite * /admin.html
+        file_server
+    }
+    import display
+}

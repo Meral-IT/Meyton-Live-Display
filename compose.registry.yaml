@@ -1,0 +1,13 @@
+# Requires Docker Compose 2.24.4+ for !reset.
+services:
+  worker:
+    image: ghcr.io/meral-it/meyton-live-display-backend:${IMAGE_TAG:-latest}
+    build: !reset null
+    pull_policy: always
+  backend:
+    image: ghcr.io/meral-it/meyton-live-display-backend:${IMAGE_TAG:-latest}
+    pull_policy: always
+  frontend:
+    image: ghcr.io/meral-it/meyton-live-display-frontend:${IMAGE_TAG:-latest}
+    build: !reset null
+    pull_policy: always
