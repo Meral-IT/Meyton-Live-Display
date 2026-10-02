@@ -1,4 +1,4 @@
-// ISSF 2026, rules 6.3.4.2, 6.3.4.3, and 6.3.4.6. All geometry uses physical millimeters.
+// ISSF 2026, rules 6.3.4.2, 6.3.4.3, and 6.3.4.6. Geometry and shot centers use physical millimeters.
 export const TARGETS = {
   lg: {diameters: [45.5, 40.5, 35.5, 30.5, 25.5, 20.5, 15.5, 10.5, 5.5, 0.5], bull: 30.5, caliber: 4.5},
   kk: {diameters: [154.4, 138.4, 122.4, 106.4, 90.4, 74.4, 58.4, 42.4, 26.4, 10.4], bull: 112.4, caliber: 5.6},
@@ -19,7 +19,7 @@ export function targetExtent(kind, hits, zoom) {
   const full = (target.size || target.diameters[0]) / 2 + target.caliber;
   if (zoom === "full" || !hits.length) return full;
   // A centered view includes the whole projectile circle, not just its center.
-  return Math.max(target.caliber * 2.5, ...hits.map(hit =>
+  return Math.max(target.caliber * 1.25, ...hits.map(hit =>
     Math.max(Math.abs(hit.x_mm), Math.abs(hit.y_mm)) + target.caliber / 2)) * 1.12;
 }
 
@@ -60,7 +60,9 @@ export function drawTarget(state, profile) {
     const ring = hit.score ? Math.floor(hit.score.value / hit.score.scale) : null;
     const fill = latest ? (ring >= 10 ? "#ec433a" : ring >= 9 ? "#e4ce26" : "#409cdc") : "#122622";
     const group = svgElement("g", {"data-shot": hit.number, "data-latest": latest, "data-x-mm": hit.x_mm, "data-y-mm": hit.y_mm});
-    const circle = svgElement("circle", {cx: hit.x_mm, cy: -hit.y_mm, r: target.caliber / 2, fill, stroke: latest ? "#fff" : "#95b1a6", "stroke-width": latest ? target.caliber / 14 : target.caliber / 25, opacity: hit.invalid ? 0.45 : 0.94});
+    const strokeWidth = target.caliber / (latest ? 14 : 25);
+    // SVG centers the stroke on the path; inset it to keep the outside diameter at caliber.
+    const circle = svgElement("circle", {cx: hit.x_mm, cy: -hit.y_mm, r: (target.caliber - strokeWidth) / 2, fill, stroke: latest ? "#fff" : "#95b1a6", "stroke-width": strokeWidth, opacity: hit.invalid ? 0.45 : 0.94});
     group.append(circle);
     group.append(svgElement("text", {x: hit.x_mm, y: -hit.y_mm, fill: latest ? "#11261f" : "#ffffff", "font-size": target.caliber * (hit.number >= 100 ? 0.45 : 0.55), "font-weight": 600, "text-anchor": "middle", "dominant-baseline": "central"}, hit.number));
     group.append(svgElement("title", {}, `Treffer ${hit.number}${hit.score ? ` · ${(hit.score.value / hit.score.scale).toLocaleString("de-DE")}` : ""}`));

@@ -53,6 +53,29 @@ def main():
         page.clock.install()
         page.goto("http://meyton.test/display/alles?preview=1")
         page.wait_for_selector(".range-tile")
+        assert page.evaluate("""async () => {
+            const {TARGETS, targetExtent, drawTarget} = await import('/target.js');
+            return Object.entries(TARGETS).every(([kind, target]) => {
+                const hits = [{number: 1, position: 1, x_mm: 0.5, y_mm: -0.5}, {number: 2, position: 1, x_mm: -0.4, y_mm: 0.3}];
+                const extent = targetExtent(kind, hits, 'auto');
+                const state = {target_kind: kind, lane: 1, shots: hits, latest: hits[1]};
+                const svg = drawTarget(state, {zoom: 'auto', theme: {target: '#179c80'}});
+                const box = svg.viewBox.baseVal;
+                const circle = svg.querySelector('g[data-shot] circle');
+                const label = svg.querySelector('g[data-shot] text');
+                const fullSvg = drawTarget(state, {zoom: 'full', theme: {target: '#179c80'}});
+                const full = (target.size || target.diameters[0]) / 2 + target.caliber;
+                return extent === target.caliber * 1.25 * 1.12 &&
+                    box.x === -box.width / 2 && box.y === -box.height / 2 &&
+                    [svg, fullSvg].every(view => [...view.querySelectorAll('g[data-shot] circle')].every(marker =>
+                        Math.abs(2 * +marker.getAttribute('r') + +marker.getAttribute('stroke-width') - target.caliber) < 1e-9)) &&
+                    +circle.getAttribute('cx') === hits[0].x_mm && +circle.getAttribute('cy') === -hits[0].y_mm &&
+                    +label.getAttribute('font-size') === target.caliber * 0.55 &&
+                    targetExtent(kind, hits, 'full') === full && targetExtent(kind, [], 'auto') === full &&
+                    [{x_mm: 0, y_mm: 0}, {x_mm: 30, y_mm: -40}].every(hit =>
+                        targetExtent(kind, [hit], 'auto') > Math.max(Math.abs(hit.x_mm), Math.abs(hit.y_mm)) + target.caliber / 2);
+            });
+        }""")
 
         def update():
             page.evaluate("snapshot => window.postMessage({type: 'profile-preview', snapshot}, location.origin)", data)

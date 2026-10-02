@@ -120,7 +120,7 @@ def main():
             for kind in ("lg", "lp", "kk"):
                 circles = page.locator(f'svg[data-target-kind="{kind}"] > circle:first-of-type')
                 assert circles.evaluate_all("nodes => nodes.every(circle => circle.getAttribute('fill') === '#179c80')")
-            assert page.locator("svg").evaluate_all("nodes => nodes.every(svg => { const box=svg.viewBox.baseVal; return [...svg.querySelectorAll('g[data-shot] circle')].every(c => { const x=+c.getAttribute('cx'), y=+c.getAttribute('cy'), r=+c.getAttribute('r'); return x-r>=box.x && y-r>=box.y && x+r<=box.x+box.width && y+r<=box.y+box.height; }); })")
+            assert page.locator("svg").evaluate_all("nodes => nodes.every(svg => { const box=svg.viewBox.baseVal; return [...svg.querySelectorAll('g[data-shot] circle')].every(c => { const x=+c.getAttribute('cx'), y=+c.getAttribute('cy'), r=+c.getAttribute('r') + +c.getAttribute('stroke-width')/2; return x-r>=box.x && y-r>=box.y && x+r<=box.x+box.width && y+r<=box.y+box.height; }); })")
             if profile_id == "alles":
                 assert page.locator('[data-lane="1"] .phase.scored').evaluate("node => getComputedStyle(node).backgroundColor") == "rgb(201, 47, 50)"
                 assert page.locator('[data-lane="4"] .phase.practice').inner_text() == "Probe"
@@ -141,7 +141,7 @@ def main():
                 assert page.evaluate("async () => (await import('/target.js')).targetExtent('schach10', [], 'full')") == 49.5
                 pistol = page.locator('[data-lane="1"] svg[data-target-kind="lp"]')
                 assert pistol.locator(":scope > circle").evaluate_all("nodes => nodes.map(node => +node.getAttribute('r'))") == [77.75, 29.75, 77.75, 69.75, 61.75, 53.75, 45.75, 37.75, 29.75, 21.75, 13.75, 5.75]
-                assert float(pistol.locator('g[data-shot="10"] circle').get_attribute("r")) == 2.25
+                assert pistol.locator('g[data-shot="10"] circle').evaluate("c => Math.abs(2 * +c.getAttribute('r') + +c.getAttribute('stroke-width') - 4.5) < 1e-9")
                 page.screenshot(path=str(output / "alles.png"))
         practice_target = fixtures["alles"]["rows"][0][3]["target"]
         practice_target.update(practice=False, position=1)

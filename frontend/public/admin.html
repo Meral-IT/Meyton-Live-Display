@@ -31,7 +31,9 @@
         <div class="form-actions"><button type="submit" id="save-profile">Profil speichern</button><button type="button" id="duplicate-profile" class="secondary">Duplizieren</button><button type="button" id="delete-profile" class="danger">Löschen</button></div>
       </form>
     </section>
-    <section class="profile-preview" aria-labelledby="preview-heading"><div class="section-heading"><h2 id="preview-heading">Vorschau</h2><a id="open-display" target="_blank" rel="noopener">Anzeige öffnen</a></div><div class="preview-frame"><iframe id="preview" title="Vorschau des Anzeigeprofils"></iframe></div><p>Vorschau mit 1920 × 1080. Änderungen erscheinen ohne Speichern; neue Stände werden nach dem Speichern eingelesen.</p><div class="stream-link"><label for="obs-url">OBS-Browserquelle</label><input id="obs-url" readonly><button type="button" id="copy-url" class="secondary">URL kopieren</button><p>Browserquelle: 1920 × 1080.</p></div>
+    <section class="profile-preview" aria-labelledby="preview-heading"><div class="section-heading"><h2 id="preview-heading">Vorschau</h2><a id="open-display" target="_blank" rel="noopener">Anzeige öffnen</a></div><div class="preview-frame"><iframe id="preview" title="Vorschau des Anzeigeprofils"></iframe></div><p>Vorschau mit 1920 × 1080. Änderungen erscheinen ohne Speichern; neue Stände werden nach dem Speichern eingelesen.</p><div class="stream-link"><label for="obs-url">OBS-Browserquelle</label><input id="obs-url" readonly><button type="button" id="copy-url" class="secondary">URL kopieren</button><p>Browserquelle: 1920 × 1080.</p>
+        <section class="certificate-download" aria-label="HTTPS-Zertifikat"><a class="button secondary" href="/meyton-root.crt" download="meyton-root.crt">CA-Zertifikat herunterladen</a><p>Für HTTPS muss die lokale Zertifizierungsstelle auf dem OBS-Rechner vertraut sein.</p></section>
+      </div>
       <section class="stream-link logo-settings" aria-labelledby="logo-heading">
         <h2 id="logo-heading">Eigenes Logo</h2>
         <p class="form-note">Für alle Anzeigen und die Verwaltung. Ohne eigenes Logo erscheint der bisherige Titel.</p>
@@ -42,7 +44,6 @@
         </form>
         <p id="logo-status" role="status" aria-live="polite"></p>
       </section>
-      <section class="stream-link certificate-download" aria-label="HTTPS-Zertifikat"><a class="button secondary" href="/meyton-root.crt" download="meyton-root.crt">CA-Zertifikat herunterladen</a><p>Für HTTPS muss die lokale Zertifizierungsstelle auf dem OBS-Rechner vertraut sein.</p></section>
       <section class="stream-link sponsor-settings" aria-labelledby="sponsors-heading">
         <h2 id="sponsors-heading">Sponsorenbilder</h2>
         <p class="form-note">Für alle Profile. Leere Stände zeigen ein zufälliges Bild. Optionalen Text je Bild eingeben und speichern; leer lassen für ein Bild ohne Text. Ohne Bilder bleibt die bisherige Anzeige.</p>
