@@ -1,8 +1,7 @@
 name: meyton-live-display
 services:
   worker:
-    image: meyton-live-display-python
-    pull_policy: build
+    image: ghcr.io/meral-it/meyton-live-display-backend:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: backend/Dockerfile
@@ -36,8 +35,10 @@ services:
     security_opt:
       - no-new-privileges:true
   backend:
-    image: meyton-live-display-python
-    pull_policy: never
+    image: ghcr.io/meral-it/meyton-live-display-backend:${IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     environment:
       SM_ADMIN_PASSWORD: ${SM_ADMIN_PASSWORD:?Set a unique SM_ADMIN_PASSWORD in .env}
       PROFILE_PATH: /data/profiles.json
@@ -52,6 +53,7 @@ services:
     security_opt:
       - no-new-privileges:true
   frontend:
+    image: ghcr.io/meral-it/meyton-live-display-frontend:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: frontend/Dockerfile
