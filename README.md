@@ -1,5 +1,7 @@
 # Meyton Live Display
 
+![Demonstration](./doc/demo.gif)
+
 > **Notice:** This project is a vibe coding experiment.
 
 Live shooting results for Meyton ShootMaster SSMDB2, displayed in a German-language browser interface. Use it on range screens, individual stand displays, or as an OBS browser source.
@@ -125,6 +127,8 @@ Add `?profile=luftgewehr` to a single-stand URL to use that profile's appearance
 For OBS, add a browser source with a URL such as `http://localhost/display/alles?obs=2` and a 1920 × 1080 viewport. Use the Docker host's address when OBS runs on another computer. OBS performs the streaming.
 
 ## Deployment guide
+
+For a container-only installation on openSUSE Leap, see the [openSUSE Leap setup guide](doc/opensuse-leap-setup.md).
 
 ### Select an image channel or version
 
