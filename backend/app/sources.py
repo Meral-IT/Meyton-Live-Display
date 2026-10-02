@@ -1,4 +1,4 @@
-"""Read-only SQL snapshots and recursive SMB change notifications."""
+"""Read-only SQL snapshots and local or SMB result exports."""
 
 import collections
 import json
@@ -213,10 +213,11 @@ def enrich_sdf(records):
 class SDFReader:
     def __init__(self, stop, deliver, status):
         self.stop, self.deliver, self.status = stop, deliver, status
+        self.local_directory = os.getenv("SM_SDF_DIRECTORY", "")
         self.host = os.getenv("SM_SMB_HOST", "")
         self.port = int(os.getenv("SM_SMB_PORT", "445"))
         self.share = os.getenv("SM_SMB_SHARE", "xml_result")
-        self.base = f"\\\\{self.host}\\{self.share}"
+        self.base = self.local_directory or f"\\\\{self.host}\\{self.share}"
         self.index = {}
         self.pending = {}
         self.cache = {}
@@ -228,7 +229,8 @@ class SDFReader:
 
     def report(self, heartbeat=False):
         state = "degraded" if self.invalid else "connected"
-        message = "XML nicht lesbar; letzte Ergebnisse bleiben erhalten" if self.invalid else "SMB-Überwachung aktiv"
+        message = "XML nicht lesbar; letzte Ergebnisse bleiben erhalten" if self.invalid else (
+            "Lokales SDF-Verzeichnis aktiv" if self.local_directory else "SMB-Überwachung aktiv")
         self.status("sdf", state, message, heartbeat=heartbeat)
 
     def arm(self, directory):
@@ -248,7 +250,9 @@ class SDFReader:
         found = {}
         while queue and not self.stop.is_set() and not done.is_set():
             path = queue.popleft()
-            for entry in smbclient.scandir(path, port=self.port, connection_cache=self.cache):
+            entries = os.scandir(path) if self.local_directory else smbclient.scandir(
+                path, port=self.port, connection_cache=self.cache)
+            for entry in entries:
                 if self.stop.is_set() or done.is_set():
                     return
                 if entry.is_dir(follow_symlinks=False):
@@ -287,7 +291,9 @@ class SDFReader:
             if self.stop.is_set() or time.monotonic() < due:
                 continue
             try:
-                with smbclient.open_file(path, mode="rb", port=self.port, connection_cache=self.cache) as file:
+                stream = open(path, "rb") if self.local_directory else smbclient.open_file(
+                    path, mode="rb", port=self.port, connection_cache=self.cache)
+                with stream as file:
                     data = file.read(MAX_XML_BYTES + 1)
                 records = parse_sdf(data)
                 for record in records:
@@ -313,9 +319,29 @@ class SDFReader:
                     self.invalid.add(path)
                     self.report()
 
+    def run_local(self):
+        initial = True
+        done = threading.Event()
+        # ponytail: recursive polling every 100 ms; use native notifications if archives make scans too slow.
+        while not self.stop.is_set():
+            try:
+                self.scan(done, initial=initial)
+                initial = False
+                while not self.discovered.empty():
+                    self.pending[self.discovered.get()] = (time.monotonic(), 0)
+                self.read_pending()
+                self.report(heartbeat=True)
+            except Exception as error:
+                self.status("sdf", "disconnected", f"SDF-Verzeichnis nicht erreichbar ({type(error).__name__})")
+                self.stop.wait(2)
+            self.stop.wait(0.1)
+
     def run(self):
+        if self.local_directory:
+            self.run_local()
+            return
         if not self.host:
-            self.status("sdf", "disabled", "SM_SMB_HOST fehlt")
+            self.status("sdf", "disabled", "SM_SMB_HOST oder SM_SDF_DIRECTORY fehlt")
             return
         while not self.stop.is_set():
             connection = None

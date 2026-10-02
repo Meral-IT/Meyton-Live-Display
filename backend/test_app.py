@@ -355,6 +355,63 @@ class ProfileAndAPIChecks(unittest.TestCase):
             reader.scan_loop(threading.Event())
         self.assertIsInstance(reader.scan_error, OSError)
 
+    def test_local_sdf_scan_and_partial_write_recovery(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"SM_SDF_DIRECTORY": directory}):
+            path = Path(directory) / "nested" / "result.XML"
+            path.parent.mkdir()
+            path.write_bytes(xml())
+            deliver, status = Mock(), Mock()
+            reader = SDFReader(threading.Event(), deliver, status)
+            done = threading.Event()
+            with patch("app.sources.smbclient.scandir") as smb_scan, patch("app.sources.smbclient.open_file") as smb_open, patch("app.sources.enrich_sdf"):
+                reader.scan(done, initial=True)
+                self.assertTrue(reader.discovered.empty())  # Existing archives are not replayed.
+                path.write_bytes(xml()[:100])
+                reader.scan(done)
+                self.assertEqual(reader.discovered.get(), str(path))
+                reader.pending[str(path)] = (time.monotonic(), 8)
+                reader.read_pending()
+                self.assertEqual(status.call_args.args[1], "degraded")
+                deliver.assert_not_called()
+                path.write_bytes(xml())
+                reader.scan(done)
+                reader.pending[reader.discovered.get()] = (time.monotonic(), 0)
+                reader.read_pending()
+                self.assertEqual(deliver.call_args.args[0][0]["id"], -1)
+                self.assertEqual(status.call_args.args[1], "connected")
+                reader.scan(done)
+                self.assertTrue(reader.discovered.empty())
+                path.unlink()
+                reader.pending[str(path)] = (time.monotonic(), 0)
+                reader.read_pending()
+                self.assertFalse(reader.pending)
+                smb_scan.assert_not_called()
+                smb_open.assert_not_called()
+
+    def test_local_sdf_run_discovers_new_files_without_smb(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"SM_SDF_DIRECTORY": directory, "SM_SMB_HOST": ""}):
+            stop, ready, delivered = threading.Event(), threading.Event(), threading.Event()
+            reader = SDFReader(stop, lambda records: delivered.set(), lambda *args, **kwargs: ready.set())
+            with patch("app.sources.enrich_sdf"), patch("app.sources.smbclient.register_session") as smb:
+                thread = threading.Thread(target=reader.run, daemon=True)
+                thread.start()
+                try:
+                    self.assertTrue(ready.wait(2))
+                    (Path(directory) / "new.xml").write_bytes(xml())
+                    self.assertTrue(delivered.wait(2))
+                    smb.assert_not_called()
+                finally:
+                    stop.set()
+                    thread.join(timeout=2)
+                self.assertFalse(thread.is_alive())
+
+    def test_local_sdf_missing_directory_reports_disconnected(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"SM_SDF_DIRECTORY": str(Path(directory) / "missing")}):
+            stop, status = threading.Event(), Mock()
+            status.side_effect = lambda *args, **kwargs: stop.set()
+            SDFReader(stop, Mock(), status).run()
+            self.assertEqual(status.call_args.args[1], "disconnected")
+
     def test_atomic_profiles_and_validation(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "profiles.json"

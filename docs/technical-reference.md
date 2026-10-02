@@ -25,7 +25,8 @@ Copy [`.env.example`](../.env.example) for a new installation. Compose injects s
 | `SM_DB_HOST`, `SM_DB_USER`, `SM_DB_PASS` | Required, nonempty | SSMDB2 connection credentials. |
 | `SM_DB_NAME` | `SSMDB2` | Vendor database name. |
 | `SM_DB_PORT` | `3306` | Vendor SQL port. |
-| `SM_SMB_HOST`, `SM_SMB_USER`, `SM_SMB_PASS` | Required, nonempty | SMB connection credentials. |
+| `SM_SMB_HOST`, `SM_SMB_USER`, `SM_SMB_PASS` | Required for SMB ingestion | SMB connection credentials; optional with a local SDF directory. |
+| `SM_SDF_DIRECTORY` | Empty | Local SDF directory; takes precedence over SMB. Set the absolute host path in `.env` and uncomment the worker's local SDF environment setting and bind mount in `compose.yaml`; the worker reads its read-only mount at `/sdf`. Without Docker, set the directory the worker can access directly. |
 | `SM_SMB_PORT` | `445` | SMB port. |
 | `SM_SMB_SHARE` | `xml_result` | Result export share. |
 | `SM_TIMEZONE` | `Europe/Berlin` | Time zone for vendor DB wall times. |
@@ -47,7 +48,7 @@ For deployments use `docker compose up -d --pull always --no-build`. For local s
 
 ## Demo behavior
 
-Use `docker compose -f compose.yaml -f compose.demo.yaml up -d --pull always --no-build`. Demo mode replaces the ingestion worker; it does not add a second writer or connect to DB, SMB, or LANA. Compose still validates the required source variables, so a new demo-only `.env` needs nonempty dummy values.
+Use `docker compose -f compose.yaml -f compose.demo.yaml up -d --pull always --no-build`. Demo mode replaces the ingestion worker; it does not add a second writer or connect to DB, SMB, or LANA. Compose still validates the required database variables, so a new demo-only `.env` needs nonempty dummy database values.
 
 The worker follows the union of saved profile ranges, including editor changes. Ranges in `kleinkaliber` use KK 5P+10W; other ranges use LG Auflage 30. Each session fires five practice shots followed by ten KK or thirty LG scored shots, with plausible groups and matching integer/decimal scores and series. Completed targets remain for eight seconds, the stand clears for five seconds, then another simulated shooter is assigned. Shots have independent timing.
 
@@ -73,7 +74,7 @@ Supported standard target mappings use documented Meyton discipline IDs for LG/L
 
 ## Sources and commissioning
 
-The worker collects all discovered ranges independently of profiles or viewers, reconciles current results once per second, and discovers new targets through incremental metadata queries. Retained historical targets are reconciled in batches of up to 50 every ten seconds. One shared SMB reader subscribes to recursive change notifications on `xml_result`. Existing files are indexed without replaying archives. A background metadata rescan every 30 seconds repairs missed notifications; reconnects also rescan. Partial XML writes are retried without discarding valid results.
+The worker collects all discovered ranges independently of profiles or viewers, reconciles current results once per second, and discovers new targets through incremental metadata queries. Retained historical targets are reconciled in batches of up to 50 every ten seconds. One shared SMB reader subscribes to recursive change notifications on `xml_result`. Existing files are indexed without replaying archives. A background metadata rescan every 30 seconds repairs missed notifications; reconnects also rescan. Partial XML writes are retried without discarding valid results. With `SM_SDF_DIRECTORY`, the same reader instead scans the local directory recursively every 100 ms, using modification time and size to detect new or changed XML files. Existing files are indexed without replaying archives, and partial writes use the same retries. Scan time adds to detection latency for large directories; validate it with the actual export archive. Missing or unreadable directories report a disconnected source and are retried. No SMB connection is made in local mode.
 
 The parser requires SDF 0.2.2 (`ResultList Version="0.2.2"`); the originally inspected server exposes its schemas through `xml_schemata`. [Meyton documents SDF](https://software.meyton.info/wp-content/uploads/Upload/Manuals/DE/Schnittstellen/Schnittstelle_-_Shooting_Data_Feed.pdf) as a live result export enabled in the Kontrollzentrum. Enable it before shooting. Confirm export notifications during practice, scoring, target replacement, and position changes.
 

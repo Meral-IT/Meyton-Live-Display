@@ -52,7 +52,7 @@ Run the `cp` command only for a new installation: it overwrites an existing conf
 
 ## 3. Prepare the Meyton connection
 
-Enable SDF result export in the Meyton Kontrollzentrum before shooting. Obtain read-only credentials for the SSMDB2 database and the SMB result share. The application connects to the existing Meyton services; you do not install a database server or mount an SMB share on this host.
+Enable SDF result export in the Meyton Kontrollzentrum before shooting. Obtain read-only credentials for the SSMDB2 database and, for remote SDF access, the SMB result share. On the central ShootMaster workstation, you can use its local export directory instead; see the [local SDF setup](../README.md#3-start-the-published-stable-images). The application connects to the existing Meyton services; you do not install a database server or mount an SMB share on this host.
 
 Allow connections **from the containers on the Docker host to the Meyton server**:
 
@@ -102,7 +102,7 @@ Generate an admin password and paste the output into `SM_ADMIN_PASSWORD`:
 openssl rand -hex 24
 ```
 
-Database, SMB, and admin passwords must be nonempty. Single-quote passwords containing `$` or `#` to prevent Compose interpolation or comment parsing; see Docker's [`.env` syntax](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation/#env-file-syntax). Keep `.env` private and out of source control.
+Database and admin passwords must be nonempty; SMB credentials are required only for SMB access. Single-quote passwords containing `$` or `#` to prevent Compose interpolation or comment parsing; see Docker's [`.env` syntax](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation/#env-file-syntax). Keep `.env` private and out of source control.
 
 Keep `SM_TIMEZONE=Europe/Berlin` and `SM_SDF_TIMEZONE=Europe/Berlin` for Meyton timestamps representing German local time. Set `SM_SDF_TIMEZONE=` only if your XML timestamps represent genuine UTC. `SM_LANA_HOST` can stay empty when LANA runs on `SM_DB_HOST`. `SM_RETENTION_DAYS=7` keeps completed sessions for seven days after their last shot. See the [configuration reference](../docs/technical-reference.md#configuration) for all settings.
 

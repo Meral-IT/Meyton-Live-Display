@@ -20,7 +20,7 @@ Live shooting results for Meyton ShootMaster SSMDB2, displayed in a German-langu
 
 - Docker Engine with Docker Compose v2, or Docker Desktop with Compose.
 - A Linux container host supporting `amd64` or `arm64`.
-- For live results: network access to the SSMDB2 database, the SMB result share, and the LANA live-occupancy interface. Use read-only database and SMB accounts.
+- For live results: access to the SSMDB2 database, the SMB result share or a local SDF directory, and the LANA live-occupancy interface. Use read-only database and SMB accounts.
 - SDF result export enabled in the Meyton Kontrollzentrum. See [source commissioning](docs/technical-reference.md#sources-and-commissioning).
 
 ### 1. Get the repository
@@ -40,7 +40,7 @@ Edit `.env` and set:
 | Setting | Purpose |
 | --- | --- |
 | `SM_DB_HOST`, `SM_DB_USER`, `SM_DB_PASS` | Read-only access to the ShootMaster database. |
-| `SM_SMB_HOST`, `SM_SMB_USER`, `SM_SMB_PASS` | Read-only access to the SMB result share. |
+| `SM_SMB_HOST`, `SM_SMB_USER`, `SM_SMB_PASS` | Read-only access to the SMB result share; optional with a local SDF directory. |
 | `SM_ADMIN_PASSWORD` | A unique password for the profile editor. There is no generated or default password. |
 | `DISPLAY_ADDRESS` | Hostnames or LAN IP addresses used to reach the display, separated by commas. Include `localhost` if used locally. |
 
@@ -67,6 +67,14 @@ Open `http://localhost/`, or use your Docker host's LAN address. The display als
 
 A healthy container does not guarantee a working Meyton connection. Check the source status in the display. On a fresh installation, archived targets are not imported: results appear after new shots arrive. See [result collection and retention](docs/technical-reference.md#local-result-database).
 
+When deploying on the central ShootMaster workstation, set `SM_SDF_DIRECTORY` in `.env` to the absolute path of its SDF export directory. In `compose.yaml`, uncomment the worker's `SM_SDF_DIRECTORY: /sdf` environment setting and the complete `/sdf` bind-mount block. SMB credentials can be left empty. Start normally:
+
+```sh
+docker compose up -d --pull always --no-build
+```
+
+The directory must already exist and be readable (including subdirectories and XML files) by container UID 10001. It is mounted read-only at `/sdf`; local files take precedence over SMB. Database and LANA access are still required.
+
 ### 4. Trust the HTTPS certificate
 
 Caddy creates a local certificate authority. Export its **public root certificate**:
@@ -81,15 +89,12 @@ HTTP serves the public display without redirecting to HTTPS. Opening `/admin` ov
 
 ## Try the demo
 
-After creating `.env`, set `SM_ADMIN_PASSWORD` and `DISPLAY_ADDRESS` as above. Compose still requires nonempty database and SMB values, even in demo mode. For a new demo-only installation, use dummy values such as:
+After creating `.env`, set `SM_ADMIN_PASSWORD` and `DISPLAY_ADDRESS` as above. Compose still requires nonempty database values, even in demo mode. For a new demo-only installation, use dummy values such as:
 
 ```dotenv
 SM_DB_HOST=demo
 SM_DB_USER=demo
 SM_DB_PASS=demo
-SM_SMB_HOST=demo
-SM_SMB_USER=demo
-SM_SMB_PASS=demo
 ```
 
 The demo worker does not connect to these hosts. Start it with:
