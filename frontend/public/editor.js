@@ -1,3 +1,6 @@
+import {updateLogo} from "/branding.js";
+import {checkRuntime} from "/reload.js";
+
 const labels = {shooter: "Schütze", discipline: "Disziplin", count: "Trefferzahl", latest: "Letzter Schuss", total: "Gesamt", series: "Serien"};
 const fields = Object.keys(labels);
 let profiles = [];
@@ -60,7 +63,8 @@ function draft() {
     rows, theme: Object.fromEntries(Object.keys(current.theme).map(color => [color, byId(`color-${color}`).value])),
     fields: [...byId("field-options").querySelectorAll("input:checked")].map(input => input.value),
     hits: byId("hits").value, zoom: byId("zoom").value, practice: byId("practice").checked,
-    discipline_inline: byId("discipline-inline").checked};
+    discipline_inline: byId("discipline-inline").checked,
+    shot_highlight: byId("shot-highlight").value, hide_unavailable: byId("hide-unavailable").checked};
 }
 
 async function updatePreview() {
@@ -71,6 +75,7 @@ async function updatePreview() {
     byId("open-display").href = base;
     byId("obs-url").value = creating ? "Nach dem Speichern verfügbar" : `${base}?obs=1`;
     const snapshot = await api("/preview", {method: "POST", body: JSON.stringify(data)});
+    if (checkRuntime(snapshot.runtime_id)) return;
     if (version === previewVersion) byId("preview").contentWindow?.postMessage({type: "profile-preview", snapshot}, location.origin);
   } catch (error) { message(error.message, true); }
 }
@@ -88,6 +93,8 @@ function select(profile, isNew = false) {
   byId("zoom").value = profile.zoom;
   byId("practice").checked = profile.practice;
   byId("discipline-inline").checked = profile.discipline_inline ?? false;
+  byId("shot-highlight").value = profile.shot_highlight ?? "none";
+  byId("hide-unavailable").checked = profile.hide_unavailable ?? false;
   byId("delete-profile").disabled = isNew || profiles.length < 2;
   byId("duplicate-profile").disabled = isNew;
   byId("settings-heading").textContent = isNew ? "Neues Profil" : "Profil bearbeiten";
@@ -137,6 +144,57 @@ byId("delete-profile").onclick = async () => {
 byId("copy-url").onclick = async () => {
   try { await navigator.clipboard.writeText(byId("obs-url").value); message("URL kopiert"); }
   catch { byId("obs-url").select(); message("URL markieren und kopieren"); }
+};
+
+async function imageUpload(file) {
+  if (file.size > 5 * 1024 * 1024) throw new Error("Bilder dürfen höchstens 5 MiB groß sein");
+  const data = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(",")[1]);
+    reader.onerror = () => reject(new Error("Bild nicht lesbar"));
+    reader.readAsDataURL(file);
+  });
+  return {name: file.name, data};
+}
+
+async function loadLogo() {
+  const image = await api("", {}, "/api/admin/logo");
+  updateLogo(image);
+  const preview = byId("logo-preview");
+  preview.hidden = !image;
+  if (image) preview.src = image.url;
+  else preview.removeAttribute("src");
+  byId("delete-logo").disabled = !image;
+}
+
+byId("logo-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  byId("upload-logo").disabled = true;
+  byId("delete-logo").disabled = true;
+  try {
+    await api("", {method: "PUT", body: JSON.stringify(await imageUpload(byId("logo-file").files[0]))}, "/api/admin/logo");
+    byId("logo-file").value = "";
+    byId("logo-status").textContent = "Logo gespeichert · Anzeigen aktualisiert";
+  } catch (error) { byId("logo-status").textContent = error.message; }
+  finally {
+    byId("upload-logo").disabled = false;
+    await loadLogo().catch(error => { byId("logo-status").textContent = error.message; });
+    updatePreview();
+  }
+});
+
+byId("delete-logo").onclick = async () => {
+  byId("upload-logo").disabled = true;
+  byId("delete-logo").disabled = true;
+  try {
+    await api("", {method: "DELETE"}, "/api/admin/logo");
+    byId("logo-status").textContent = "Logo entfernt · Bisheriger Titel wiederhergestellt";
+  } catch (error) { byId("logo-status").textContent = error.message; }
+  finally {
+    byId("upload-logo").disabled = false;
+    await loadLogo().catch(error => { byId("logo-status").textContent = error.message; });
+    updatePreview();
+  }
 };
 
 async function loadSponsors() {
@@ -198,14 +256,7 @@ byId("sponsor-form").addEventListener("submit", async event => {
   try {
     const files = [...byId("sponsor-files").files];
     for (const file of files) {
-      if (file.size > 5 * 1024 * 1024) throw new Error("Bilder dürfen höchstens 5 MiB groß sein");
-      const data = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result.split(",")[1]);
-        reader.onerror = () => reject(new Error("Bild nicht lesbar"));
-        reader.readAsDataURL(file);
-      });
-      await api("", {method: "POST", body: JSON.stringify({name: file.name, data})}, "/api/admin/sponsors");
+      await api("", {method: "POST", body: JSON.stringify(await imageUpload(file))}, "/api/admin/sponsors");
     }
     byId("sponsor-files").value = "";
     byId("sponsor-status").textContent = "Bilder gespeichert · Anzeigen aktualisiert";
@@ -220,4 +271,5 @@ try {
   profiles = await api("");
   select(profiles[0]);
   await loadSponsors();
+  await loadLogo();
 } catch (error) { message(error.message, true); }

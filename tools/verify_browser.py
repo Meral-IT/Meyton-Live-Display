@@ -58,6 +58,12 @@ def main():
         page.on("pageerror", lambda error: errors.append(str(error)))
         response = context.request.get(args.url + "/", max_redirects=0)
         assert response.status == 200  # HTTP must serve the page without redirecting to HTTPS.
+        certificate = context.request.get(args.url + "/meyton-root.crt")
+        assert certificate.status == 200
+        assert "BEGIN CERTIFICATE" in certificate.text()
+        assert 'attachment; filename="meyton-root.crt"' == certificate.headers["content-disposition"]
+        assert "PRIVATE KEY" not in certificate.text()
+        assert context.request.get(args.url + "/root.key").status == 404
         assert context.request.get(admin_url + "/api/admin/auth").status == 401
         assert context.request.get(admin_url + "/admin").status == 401
         if url.scheme == "http":
@@ -215,6 +221,20 @@ def main():
             route.fulfill(status=200, content_type="text/event-stream", body="event: snapshot\ndata: " + json.dumps(data) + "\n\n")
         page.route("**/api/events?*", single_events)
         page.goto(f"{args.url}/display/alles")
+        page.wait_for_selector(".range-tile")
+        page.locator("#source-status").evaluate("""node => node.textContent =
+            'SSMDB2: DB nicht erreichbar (OperationalError) · geprüft — | ' +
+            'SDF: Verbindung wird hergestellt · geprüft — | LANA: Verbindung wird hergestellt · geprüft — | ' +
+            'Lokale DB: Lokale Ergebnisdatenbank verbunden · geprüft 21:19:18 | ' +
+            'Worker: Ergebnis-Worker aktiv · geprüft 21:19:18'""")
+        for width in (1920, 1440, 1024, 768, 700, 390, 320):
+            page.set_viewport_size({"width": width, "height": 1080})
+            for selector in (".display-footer", "#source-status", "#ranges"):
+                assert page.locator(selector).evaluate("""node => {
+                    const bounds = node.getBoundingClientRect();
+                    return bounds.left >= -1 && bounds.right <= innerWidth + 1;
+                }"""), (width, selector)
+        page.set_viewport_size({"width": 1920, "height": 1080})
         page.locator('[data-lane="2"] a.lane').click()
         page.wait_for_url("**/range/2?profile=alles")
         page.locator(".last-score strong").get_by_text("12,5", exact=True).wait_for()
@@ -255,7 +275,20 @@ def main():
         editor = admin.new_page()
         editor.on("pageerror", lambda error: errors.append(str(error)))
         editor.goto(admin_url + "/admin")
+        with editor.expect_download() as certificate_download:
+            editor.get_by_role("link", name="CA-Zertifikat herunterladen").click()
+        assert certificate_download.value.suggested_filename == "meyton-root.crt"
+        assert certificate_download.value.failure() is None
         editor.wait_for_selector(".profile-choice")
+        for width in (1920, 1440, 1024, 768, 390, 320):
+            editor.set_viewport_size({"width": width, "height": 1000})
+            for selector in ("#hits", "#zoom"):
+                assert editor.locator(selector).evaluate("""select => {
+                    const bounds = select.getBoundingClientRect();
+                    const form = select.closest('form').getBoundingClientRect();
+                    return bounds.left >= form.left - 1 && bounds.right <= form.right + 1;
+                }"""), (width, selector)
+        editor.set_viewport_size({"width": 1600, "height": 1000})
         temporary_id = "browser-check-" + str(int(time.time()))
         editor.locator("#new-profile").click()
         editor.locator("#name").fill("Browserprüfung")

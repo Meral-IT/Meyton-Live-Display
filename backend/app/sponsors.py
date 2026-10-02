@@ -1,6 +1,7 @@
 """Sponsor images on the existing configuration volume; no image dependencies."""
 
 import base64
+import json
 import os
 import re
 import secrets
@@ -54,6 +55,47 @@ def image_data(encoded):
     return ET.tostring(root, encoding="utf-8", xml_declaration=True), "svg"
 
 
+def write_file(path, data):
+    descriptor, temporary = tempfile.mkstemp(dir=path.parent, prefix=".upload-")
+    try:
+        with os.fdopen(descriptor, "wb") as file:
+            file.write(data)
+            file.flush()
+            os.fsync(file.fileno())
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+class LogoStore:
+    def __init__(self, path):
+        self.path = Path(path)
+        self.image = json.loads(self.path.read_text()) if self.path.exists() else None
+        self.lock = threading.Lock()
+
+    @property
+    def metadata(self):
+        image = self.image
+        return {"name": image["name"], "url": "/api/logo?v=" + image["id"]} if image else None
+
+    def set(self, name, encoded):
+        with self.lock:
+            if not isinstance(name, str) or not name.strip() or len(name) > 128:
+                raise ValueError("Bildname ungültig")
+            data, extension = image_data(encoded)
+            image = {"name": name, "type": extension, "id": secrets.token_hex(8),
+                     "data": base64.b64encode(data).decode()}
+            write_file(self.path, json.dumps(image).encode())
+            self.image = image
+            return self.metadata
+
+    def delete(self):
+        with self.lock:
+            self.path.unlink(missing_ok=True)
+            self.image = None
+
+
 class SponsorStore:
     def __init__(self, directory):
         self.directory = Path(directory)
@@ -82,18 +124,6 @@ class SponsorStore:
                            "url": "/api/sponsors/" + quote(path.name)})
         return images
 
-    def write_file(self, path, data):
-        descriptor, temporary = tempfile.mkstemp(dir=self.directory, prefix=".upload-")
-        try:
-            with os.fdopen(descriptor, "wb") as file:
-                file.write(data)
-                file.flush()
-                os.fsync(file.fileno())
-            os.replace(temporary, path)
-        finally:
-            if os.path.exists(temporary):
-                os.unlink(temporary)
-
     def add(self, name, encoded):
         with self.lock:
             if not isinstance(name, str) or not name.strip() or len(name) > 128:
@@ -103,7 +133,7 @@ class SponsorStore:
             data, extension = image_data(encoded)
             stem = re.sub(r"[^\w .-]", "_", Path(name.replace("\\", "/")).stem)[:80] or "Sponsor"
             image_id = secrets.token_hex(8) + "_" + stem + "." + extension
-            self.write_file(self.directory / image_id, data)
+            write_file(self.directory / image_id, data)
             self.images = self.list()
             return next(image for image in self.images if image["id"] == image_id)
 
@@ -112,7 +142,7 @@ class SponsorStore:
             raise ValueError("Sponsorentext darf höchstens 300 Zeichen lang sein")
         with self.lock:
             path = self.path(image_id)
-            self.write_file(path.with_name(path.name + ".txt"), text.strip().encode("utf-8"))
+            write_file(path.with_name(path.name + ".txt"), text.strip().encode("utf-8"))
             self.images = self.list()
             return next(image for image in self.images if image["id"] == image_id)
 

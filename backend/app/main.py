@@ -1,6 +1,7 @@
 """Read-only local result display, profile API and server-sent events."""
 
 import asyncio
+import base64
 import json
 import os
 import secrets
@@ -16,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .domain import RangeState, iso
 from .profiles import Profile, ProfileStore
-from .sponsors import IMAGE_POLICY, MAX_REQUEST_BYTES, TYPES, SponsorStore
+from .sponsors import IMAGE_POLICY, MAX_REQUEST_BYTES, TYPES, LogoStore, SponsorStore
 from .storage import connect_reader, read_snapshot
 
 
@@ -27,8 +28,10 @@ class SponsorText(BaseModel):
 
 class Runtime:
     def __init__(self, path):
+        self.id = secrets.token_hex(16)
         self.profiles = ProfileStore(path)
         self.sponsors = SponsorStore(self.profiles.path.parent / "sponsors")
+        self.logo = LogoStore(self.profiles.path.parent / "logo.json")
         self.ranges = RangeState()
         self.status = {source: {"state": "starting", "message": "Verbindung wird hergestellt", "last_check_at": None}
                        for source in ("db", "sdf", "lana")}
@@ -68,12 +71,12 @@ class Runtime:
             profile = profile.model_copy(update={"rows": [[lane]]})
         occupancy_confirmed = all(self.status.get(source, {}).get("state") == "connected" for source in ("worker", "local_db")) and any(
             self.status.get(source, {}).get("state") == "connected" for source in ("lana", "demo"))
-        return {"profile": profile.model_dump(), "revision": self.revision,
+        return {"runtime_id": self.id, "profile": profile.model_dump(), "revision": self.revision,
                 "rows": [[{"lane": lane, "target": self.ranges.public(lane, profile),
                            "live_shooter": self.ranges.live_shooters.get(lane),
                            "occupancy": self.ranges.occupancy.get(lane, "unknown") if occupancy_confirmed else "unknown"}
                           for lane in row] for row in profile.rows],
-                "sources": self.status, "sponsors": self.sponsors.images, "server_time": iso(time.time())}
+                "sources": self.status, "sponsors": self.sponsors.images, "logo": self.logo.metadata, "server_time": iso(time.time())}
 
 
 def create_app(profile_path=None, *, result_path=None):
@@ -191,6 +194,55 @@ def create_app(profile_path=None, *, result_path=None):
     def authenticate():
         return Response(status_code=204)
 
+    @app.get("/api/logo")
+    def logo_image(request: Request):
+        image = request.app.state.runtime.logo.image
+        if image is None:
+            raise HTTPException(404, "Kein eigenes Logo")
+        return Response(base64.b64decode(image["data"]), media_type=TYPES[image["type"]], headers={
+            "Content-Security-Policy": IMAGE_POLICY, "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store"})
+
+    @app.get("/api/admin/logo", dependencies=[Depends(admin)])
+    def logo_settings(request: Request):
+        return request.app.state.runtime.logo.metadata
+
+    async def image_payload(request):
+        data = bytearray()
+        async for chunk in request.stream():
+            if len(data) + len(chunk) > MAX_REQUEST_BYTES:
+                raise HTTPException(413, "Bild zu groß · maximal 5 MiB")
+            data.extend(chunk)
+        try:
+            payload = json.loads(data)
+            if not isinstance(payload, dict) or set(payload) != {"name", "data"}:
+                raise ValueError("Bildname und Bilddaten erforderlich")
+            return payload
+        except ValueError as error:
+            raise HTTPException(422, str(error))
+
+    @app.put("/api/admin/logo", dependencies=[Depends(admin)])
+    async def upload_logo(request: Request):
+        payload = await image_payload(request)
+        runtime = request.app.state.runtime
+        try:
+            image = await asyncio.to_thread(runtime.logo.set, payload["name"], payload["data"])
+        except ValueError as error:
+            raise HTTPException(422, str(error))
+        except OSError:
+            raise HTTPException(503, "Logo konnte nicht gespeichert werden")
+        runtime.notify()
+        return image
+
+    @app.delete("/api/admin/logo", dependencies=[Depends(admin)])
+    async def delete_logo(request: Request):
+        runtime = request.app.state.runtime
+        try:
+            await asyncio.to_thread(runtime.logo.delete)
+        except OSError:
+            raise HTTPException(503, "Logo konnte nicht entfernt werden")
+        runtime.notify()
+        return Response(status_code=204)
+
     @app.get("/api/sponsors/{image_id}")
     def sponsor_image(image_id: str, request: Request):
         try:
@@ -207,16 +259,9 @@ def create_app(profile_path=None, *, result_path=None):
 
     @app.post("/api/admin/sponsors", status_code=201, dependencies=[Depends(admin)])
     async def add_sponsor(request: Request):
-        data = bytearray()
-        async for chunk in request.stream():
-            if len(data) + len(chunk) > MAX_REQUEST_BYTES:
-                raise HTTPException(413, "Bild zu groß · maximal 5 MiB")
-            data.extend(chunk)
+        payload = await image_payload(request)
         runtime = request.app.state.runtime
         try:
-            payload = json.loads(data)
-            if not isinstance(payload, dict) or set(payload) != {"name", "data"}:
-                raise ValueError("Bildname und Bilddaten erforderlich")
             image = await asyncio.to_thread(runtime.sponsors.add, payload["name"], payload["data"])
         except ValueError as error:
             raise HTTPException(422, str(error))

@@ -75,9 +75,13 @@ docker compose up -d --pull always --no-build
 
 The directory must already exist and be readable (including subdirectories and XML files) by container UID 10001. It is mounted read-only at `/sdf`; local files take precedence over SMB. Database and LANA access are still required.
 
+### Optional custom logo
+
+In the admin panel, use **Eigenes Logo** to upload or replace the top-left logo (PNG, JPEG, or SVG, up to 5 MiB). **Logo entfernen** restores the current title. The logo is shared by all displays and the admin page, persists on the existing `profiles` volume, and updates connected displays without a restart. Both pages share the same header height.
+
 ### 4. Trust the HTTPS certificate
 
-Caddy creates a local certificate authority. Export its **public root certificate**:
+Caddy creates a local certificate authority. In the profile settings, click **CA-Zertifikat herunterladen** to download its public root certificate. Before HTTPS is trusted, download it directly at `http://<Docker-host>:<HTTP_PORT>/meyton-root.crt` (default port 80). Alternatively, export it from the container:
 
 ```sh
 docker compose cp frontend:/data/caddy/pki/authorities/local/root.crt ./meyton-root.crt

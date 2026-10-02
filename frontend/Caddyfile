@@ -9,10 +9,19 @@
         X-Content-Type-Options nosniff
         Referrer-Policy same-origin
     }
-    @app_content not path /api/sponsors/*
+    @app_content not path /api/sponsors/* /api/logo
     header @app_content Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'self'"
+    @ui path / /display/* /range/* /admin* /*.html /*.js /*.css
+    header @ui Cache-Control "no-cache"
+    handle /meyton-root.crt {
+        root * /data/caddy/pki/authorities/local
+        rewrite * /root.crt
+        header Content-Type application/x-x509-ca-cert
+        header Content-Disposition "attachment; filename=\"meyton-root.crt\""
+        file_server
+    }
     @public_api {
-        path /api/profiles /api/snapshot /api/events /api/ranges/* /api/sponsors/*
+        path /api/profiles /api/snapshot /api/events /api/ranges/* /api/sponsors/* /api/logo
         method GET
     }
     handle @public_api {

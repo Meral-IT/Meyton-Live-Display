@@ -1,4 +1,6 @@
 import {drawTarget, TARGETS} from "/target.js";
+import {updateLogo} from "/branding.js";
+import {checkRuntime} from "/reload.js";
 
 const number = new Intl.NumberFormat("de-DE", {maximumFractionDigits: 1});
 const decimal = new Intl.NumberFormat("de-DE", {minimumFractionDigits: 1, maximumFractionDigits: 1});
@@ -14,6 +16,7 @@ let stream;
 let previewSnapshot;
 let profiles = [];
 const sponsorChoices = new Map();
+const shotHighlights = new Map();
 const params = new URLSearchParams(location.search);
 const range = location.pathname.startsWith("/range/") ? Number(location.pathname.split("/")[2]) : null;
 const requestedObs = params.get("obs");
@@ -27,6 +30,12 @@ function tile(entry, profile, sponsors) {
   const card = element("article", "range-tile");
   card.dataset.lane = entry.lane;
   const state = entry.target;
+  const highlight = shotHighlights.get(entry.lane);
+  if (["background", "border"].includes(profile.shot_highlight) && highlight?.until > Date.now()) {
+    const className = `shot-${profile.shot_highlight}`;
+    card.classList.add(className);
+    setTimeout(() => card.classList.remove(className), highlight.until - Date.now());
+  }
   const occupancy = entry.occupancy || "unknown";
   const discipline = state && profile.fields.includes("discipline") ? state.discipline || "Disziplin unbekannt" : null;
   const top = element("div", "tile-top");
@@ -127,7 +136,9 @@ function tile(entry, profile, sponsors) {
 }
 
 function render(snapshot) {
+  if (checkRuntime(snapshot.runtime_id)) return;
   snapshot = previewSnapshot || snapshot;
+  updateLogo(snapshot.logo);
   const profile = snapshot.profile;
   for (const [name, color] of Object.entries(profile.theme)) document.documentElement.style.setProperty(`--${name}`, color);
   const title = range === null ? profile.name : `Stand ${range} · ${profile.name}`;
@@ -135,8 +146,19 @@ function render(snapshot) {
   document.title = `${title} · Meyton Live Display`;
   const grid = document.getElementById("ranges");
   const known = new Map(snapshot.rows.flat().map(entry => [entry.lane, entry]));
-  grid.style.gridTemplateRows = `repeat(${profile.rows.length}, minmax(0, 1fr))`;
-  grid.replaceChildren(...profile.rows.map(row => {
+  for (const entry of known.values()) {
+    const state = entry.target;
+    const key = state?.shot_count ? JSON.stringify([state.id, state.position, state.shot_count, state.last_shot_at]) : null;
+    const previous = shotHighlights.get(entry.lane);
+    shotHighlights.set(entry.lane, {key, until: previous && key && key !== previous.key ? Date.now() + 3000 : key ? previous?.until || 0 : 0});
+  }
+  const liveConnected = ["worker", "local_db"].every(name => snapshot.sources[name]?.state === "connected") &&
+    ["lana", "demo"].some(name => snapshot.sources[name]?.state === "connected");
+  // ponytail: missing live status approximates unavailable; use an explicit power flag if LANA exposes one.
+  const rows = profile.rows.map(row => row.filter(lane => !profile.hide_unavailable || !liveConnected ||
+    ["free", "occupied"].includes(known.get(lane)?.occupancy))).filter(row => row.length);
+  grid.style.gridTemplateRows = rows.length ? `repeat(${rows.length}, minmax(0, 1fr))` : "none";
+  grid.replaceChildren(...rows.map(row => {
     const nodes = element("section", "range-row");
     nodes.setAttribute("aria-label", `Stände ${row.join(", ")}`);
     nodes.style.gridTemplateColumns = `repeat(${row.length}, minmax(0, 1fr))`;

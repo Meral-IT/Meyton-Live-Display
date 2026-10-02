@@ -39,6 +39,8 @@ class Profile(BaseModel):
     practice: bool = True
     zoom: Literal["auto", "full"] = "auto"
     discipline_inline: bool = False
+    shot_highlight: Literal["none", "background", "border"] = "none"
+    hide_unavailable: bool = False
 
     @field_validator("name")
     @classmethod

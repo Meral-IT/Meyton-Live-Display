@@ -12,7 +12,7 @@ Three Compose services run two images:
 - `backend` serves the API and Server-Sent Events (SSE) from a read-only SQLite connection. It manages profiles and sponsor files but receives no Meyton credentials.
 - `frontend` serves static browser assets and proxies the API through Caddy. It alone publishes HTTP/HTTPS host ports.
 
-Results use `/results/results.sqlite3` on the shared `results` volume. Configuration uses the `profiles` volume. Caddy persists its internal CA in `caddy_data` and runtime configuration in `caddy_config`. Run exactly one worker and one Uvicorn backend process. Multiple viewers share the backend database watcher and SSE cache. There is no separate database server, ORM, broker, historical browsing UI, or write access to Meyton.
+Results use `/results/results.sqlite3` on the shared `results` volume. Configuration uses the `profiles` volume. Caddy persists its internal CA in `caddy_data` and runtime configuration in `caddy_config`. The uploaded logo is stored at `/data/logo.json` on the existing `profiles` volume. Run exactly one worker and one Uvicorn backend process. Multiple viewers share the backend database watcher and SSE cache. There is no separate database server, ORM, broker, historical browsing UI, or write access to Meyton.
 
 The backend image runs as UID 10001. Services enable `no-new-privileges`. DB and SMB accounts must have read access only; the application uses SQL read-only transactions and does not create or modify vendor files. Public HTTP/HTTPS displays are unauthenticated. Administrative requests use Basic authentication through HTTPS; cross-origin browser mutations are rejected.
 
@@ -135,25 +135,31 @@ One backend thread checks the committed revision every 50 ms and refreshes only 
 
 ## API and profile storage
 
-Public: `GET /api/profiles`, `GET /api/snapshot?profile=alles`, `GET /api/ranges/2?profile=alles`, `GET /api/events?profile=alles`, `GET /api/sponsors/{image_id}`, and internal `/healthz` (not exposed by Caddy).
+Public: `GET /api/profiles`, `GET /api/snapshot?profile=alles`, `GET /api/ranges/2?profile=alles`, `GET /api/events?profile=alles`, `GET /api/sponsors/{image_id}`, `GET /api/logo`, and internal `/healthz` (not exposed by Caddy).
 
 The single-range endpoint returns the normal snapshot shape with exactly one row and one range, retaining occupancy, source status, scores, concealment, and profile settings. `GET /api/events?profile=alles&lane=2` streams the corresponding live snapshot. Range numbers must be integers from 1 to 32767. Single views also work for ranges absent from saved profiles. All ranges are collected by the shared worker; opening a view creates no vendor request, connection, or range lease. Saved profiles remain unchanged.
 
 The SSE endpoint sends `snapshot` events containing complete ordered range states and source status. Reconnects receive a fresh snapshot. A deleted profile emits `deleted`. Slow viewers coalesce updates instead of creating an unbounded replay queue.
 
-Protected: `GET/POST /api/admin/sponsors`, `PUT/DELETE /api/admin/sponsors/{image_id}`, `GET /api/admin/auth`, `GET/POST /api/admin/profiles`, `POST /api/admin/profiles/preview`, and `PUT/DELETE /api/admin/profiles/{id}`. Draft previews are validated and use live range state without saving. Writes require Basic authentication and JSON; cross-origin browser mutations are rejected. Profile IDs remain stable on edits.
+Every snapshot also includes `runtime_id`, generated once at backend startup. Displays reload the full page when a subsequent snapshot has a different ID, including after SSE reconnects. The editor checks the same ID through its existing preview refresh. Initial IDs and ordinary updates do not reload pages. HTML, JavaScript, and CSS responses require cache revalidation so reloads pick up deployed assets. Backend restarts also trigger reloads; frontend-only deployments need a backend restart to change the ID.
+
+Protected: `GET/PUT/DELETE /api/admin/logo`, `GET/POST /api/admin/sponsors`, `PUT/DELETE /api/admin/sponsors/{image_id}`, `GET /api/admin/auth`, `GET/POST /api/admin/profiles`, `POST /api/admin/profiles/preview`, and `PUT/DELETE /api/admin/profiles/{id}`. Draft previews are validated and use live range state without saving. Writes require Basic authentication and JSON; cross-origin browser mutations are rejected. Profile IDs remain stable on edits.
 
 Backend storage: `/data/profiles.json` on the `profiles` Docker volume. Saves use a temporary file, fsync, and atomic replacement. Invalid existing storage fails startup instead of silently overwriting profiles.
+
+Logo uploads accept `PUT /api/admin/logo` with exactly `name` and base64 `data`, using the same PNG/JPEG/SVG validation and 5 MiB limit as sponsor images. Upload replaces the current logo atomically; delete restores the default title. Snapshots include `logo` metadata (or `null`), so connected displays update immediately. Image responses use a restricted content policy. The logo persists on the profiles volume; `LOGO_DIRECTORY` and the former branding mount are no longer used.
 
 Sponsor uploads accept JSON with exactly `name` and `data`; `data` is base64-encoded image content. Sponsor text updates accept `{"text": "Optional display text"}` with a maximum of 300 characters. Removing an image also removes its text. Public snapshots include sponsor metadata; image responses use immutable caching and a restricted content policy.
 
 Profile IDs use lowercase letters, digits, and hyphens, with a maximum of 48 characters. Names are nonblank and limited to 64 characters. Profiles contain 1–8 rows, each with 1–12 unique stand numbers between 1 and 32767. At most 64 profiles may be stored, and at least one must remain. Themes use `#RRGGBB` colors. `hits` is `series` or `all`; `zoom` is `auto` or `full`. Additional fields are rejected.
 
+`shot_highlight` is `none` (default), `background` (gray card), or `border` (gray border). Newly observed shots highlight their card for three seconds; another shot restarts the interval. Initial snapshots and repeated updates do not flash cards. `hide_unavailable` defaults to `false`. When enabled and live occupancy, worker, and local storage are connected, only stands with confirmed `free` or `occupied` status appear; empty layout rows collapse. Missing live status approximates unavailable because the current LANA feed has no explicit power flag and can omit stands for other reasons. Source outages preserve all configured cards. These settings also apply to previews and single-stand/OBS displays. Run `python tools/verify_display_settings.py` for offline browser checks.
+
 HTTP admin calls are rejected by Caddy; use HTTPS. Swagger, ReDoc, and the OpenAPI endpoint are disabled.
 
 ## Backup and restore
 
-Keep `.env` in a secure backup location. Keep backups of all four volumes, including Caddy's certificate authority, before an upgrade. The examples below put application backups under Git-ignored `.data/backups/`; copy them to a separate backup destination afterward.
+Keep `.env` in a secure backup location. Keep backups of all application volumes, including Caddy's certificate authority, before an upgrade. The examples below put application backups under Git-ignored `.data/backups/`; copy them to a separate backup destination afterward.
 
 ### Result database
 
@@ -178,11 +184,13 @@ Stop the backend briefly to avoid edits during the configuration backup:
 mkdir -p .data/backups
 docker compose stop backend
 docker compose cp backend:/data/profiles.json .data/backups/profiles-backup.json
+# When a custom logo is set:
+docker compose cp backend:/data/logo.json .data/backups/logo-backup.json
 docker compose cp backend:/data/sponsors .data/backups/sponsors-backup
 docker compose start backend
 ```
 
-Copy the whole sponsor directory, including text sidecars. Restore profiles and sponsor files with the backend stopped and ownership set to UID 10001. Restart the backend afterward. Profile saves use a temporary file, fsync, and atomic replacement; invalid existing profiles fail startup rather than being overwritten with defaults.
+Copy the whole sponsor directory, including text sidecars. Restore profiles, the optional logo file, and sponsor files with the backend stopped and ownership set to UID 10001. Restart the backend afterward. Profile saves use a temporary file, fsync, and atomic replacement; invalid existing profiles fail startup rather than being overwritten with defaults.
 
 ### Caddy data
 
@@ -209,13 +217,14 @@ Backend tests use temporary storage and synthetic source data. Release tests cov
 
 ```sh
 .venv/bin/python -m playwright install chromium
+.venv/bin/python tools/verify_branding.py
 .venv/bin/python tools/verify_storage_runtime.py
 .venv/bin/python tools/verify_browser.py --url http://localhost
 .venv/bin/python tools/verify_sponsors.py
 .venv/bin/python tools/verify_runtime.py --url https://localhost
 ```
 
-`verify_storage_runtime.py` starts an isolated local backend with temporary files and synthetic shots; it never connects to vendor sources. It checks worker/SQLite/SSE behavior and records a replay report in `test-results/storage-replay.json`.
+`verify_branding.py` checks custom logo display, missing/invalid image fallback, and matching responsive header heights using local assets without a running deployment. `verify_storage_runtime.py` starts an isolated local backend with temporary files and synthetic shots; it never connects to vendor sources. It checks worker/SQLite/SSE behavior and records a replay report in `test-results/storage-replay.json`.
 
 The other checks require a running Compose deployment and a configured `.env`. `verify_browser.py` checks layouts, OBS bounds, zoom, orientation, score formatting, authentication, keyboard access, and updates across multiple viewers. It uses synthetic browser responses and temporarily creates/deletes profiles. Supply the HTTP base URL with its port if changed; the tool reads `HTTPS_PORT` for admin access. `verify_sponsors.py` uploads/removes temporary sponsor images and reads `HTTP_PORT`/`HTTPS_PORT`. `verify_runtime.py` trusts the copied Caddy CA, temporarily creates/deletes a profile, and **restarts the backend** to test persistence; pass the correct HTTPS URL if the hostname or port differs. Run these deployment checks when a brief interruption and temporary configuration changes are acceptable.
 

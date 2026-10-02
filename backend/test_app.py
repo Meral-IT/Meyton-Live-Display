@@ -418,7 +418,9 @@ class ProfileAndAPIChecks(unittest.TestCase):
             store = ProfileStore(path)
             self.assertEqual(store.get("alles").rows, seeds()[0].rows)
             self.assertFalse(store.get("alles").discipline_inline)
-            for changes in [{"rows": [[1], [1]]}, {"rows": [[]]}, {"rows": [[0]]}, {"name": " "}, {"theme": {"text": "url(bad)"}}, {"discipline_inline": "sideways"}]:
+            self.assertEqual(store.get("alles").shot_highlight, "none")
+            self.assertFalse(store.get("alles").hide_unavailable)
+            for changes in [{"rows": [[1], [1]]}, {"rows": [[]]}, {"rows": [[0]]}, {"name": " "}, {"theme": {"text": "url(bad)"}}, {"discipline_inline": "sideways"}, {"shot_highlight": "flash"}, {"hide_unavailable": "maybe"}]:
                 with self.assertRaises(ValueError):
                     Profile.model_validate({**store.profiles[0].model_dump(), **changes})
             before = path.read_bytes()
@@ -429,9 +431,13 @@ class ProfileAndAPIChecks(unittest.TestCase):
             self.assertEqual(len(list(Path(directory).iterdir())), 1)
             store.profiles[0].name = "Updated"
             store.profiles[0].discipline_inline = True
+            store.profiles[0].shot_highlight = "border"
+            store.profiles[0].hide_unavailable = True
             store.save(store.profiles)
             self.assertEqual(ProfileStore(path).get("alles").name, "Updated")
             self.assertTrue(ProfileStore(path).get("alles").discipline_inline)
+            self.assertEqual(ProfileStore(path).get("alles").shot_highlight, "border")
+            self.assertTrue(ProfileStore(path).get("alles").hide_unavailable)
 
     def test_api_auth_persistence_and_source_failure(self):
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"SM_ADMIN_PASSWORD": "test-password"}):
@@ -467,14 +473,21 @@ class ProfileAndAPIChecks(unittest.TestCase):
                 store.source_status("db", "connected", "ok")
                 self.assertEqual(store.connection.execute("SELECT revision FROM meta").fetchone()[0], revision)
                 before = client.get("/api/snapshot").json()
+                runtime_id = before["runtime_id"]
+                self.assertTrue(runtime_id)
+                self.assertEqual(client.get("/api/ranges/1").json()["runtime_id"], runtime_id)
+                self.assertEqual(preview.json()["runtime_id"], runtime_id)
                 store.source_status("db", "disconnected", "offline")
                 self.wait_for(lambda: runtime.status["db"]["state"] == "disconnected")
                 after = client.get("/api/snapshot").json()
+                self.assertEqual(after["runtime_id"], runtime_id)
                 self.assertEqual(before["rows"], after["rows"])
                 self.assertEqual(after["sources"]["db"]["state"], "disconnected")
                 self.assertEqual(after["sources"]["db"]["last_check_at"], before["sources"]["db"]["last_check_at"])
                 self.assertEqual(client.get("/api/snapshot?profile=missing").status_code, 404)
             self.assertEqual(ProfileStore(path).get("alles").id, "alles")
+            with TestClient(app) as client:
+                self.assertNotEqual(client.get("/api/snapshot").json()["runtime_id"], runtime_id)
             store.close()
 
 
