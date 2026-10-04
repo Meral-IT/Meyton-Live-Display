@@ -1,6 +1,7 @@
 {
     admin off
     auto_https disable_redirects
+    default_sni {$TLS_DEFAULT_SNI:localhost}
 }
 
 (display) {
