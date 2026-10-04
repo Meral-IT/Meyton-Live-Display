@@ -15,8 +15,8 @@ from .storage import ResultStore
 NAMES = ("Becker, Anna", "Berg, Leon", "Fischer, Emma", "Klein, Paul", "Koch, Mia",
          "Lang, Felix", "Meyer, Lena", "Neumann, Jonas", "Weber, Clara", "Wolf, Ben")
 # Match the verified SVG geometry; these scores belong only to synthetic results.
-TARGETS = {"lg": ("LG Auflage 30", 10111030, 30, 2.5, 2.5, 0.8),
-           "kk": ("KK 5P+10W", 41211010, 10, 8.0, 8.0, 3.2)}
+TARGETS = {"0111": ("LG Auflage 30", 10111030, 30, 2.5, 2.5, 0.8),
+           "1211": ("KK 5P+10W", 41211010, 10, 8.0, 8.0, 3.2)}
 
 
 class DemoWorker:
@@ -63,7 +63,7 @@ class DemoWorker:
             del self.sessions[lane]
             self.occupancies[lane] = {"state": "free", "shooter": "Unbekannt"}
         for lane in sorted(lanes):
-            kind = "kk" if lane in small else "lg"
+            kind = "1211" if lane in small else "0111"
             if lane not in self.sessions or self.sessions[lane]["kind"] != kind:
                 self.new_session(lane, kind, now)
         self.profile_stamp = stamp

@@ -170,6 +170,56 @@ async function loadLogo() {
   byId("delete-logo").disabled = !image;
 }
 
+let disciplineRules = [];
+
+function disciplineRow(mapping = {name: "", rule: disciplineRules[0]?.rule || ""}) {
+  const row = document.createElement("div");
+  row.className = "discipline-row";
+  const name = document.createElement("input");
+  name.required = true;
+  name.maxLength = 64;
+  name.placeholder = "Exakter Disziplinname";
+  name.value = mapping.name;
+  const rule = document.createElement("select");
+  rule.append(...disciplineRules.map(item => {
+    const option = document.createElement("option");
+    option.value = item.rule;
+    const caliber = Array.isArray(item.caliber_mm) ? `${item.caliber_mm[0]}–${item.caliber_mm[1]}` : item.caliber_mm;
+    option.textContent = `${item.rule} · ${item.description} · ${String(caliber).replace(".", ",")} mm`;
+    return option;
+  }));
+  rule.value = mapping.rule;
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "danger";
+  remove.textContent = "Entfernen";
+  remove.onclick = () => row.remove();
+  row.append(name, rule, remove);
+  return row;
+}
+
+async function loadDisciplines() {
+  const data = await api("", {}, "/api/admin/disciplines");
+  disciplineRules = data.rules;
+  byId("discipline-list").replaceChildren(...data.mappings.map(disciplineRow));
+}
+
+byId("add-discipline").onclick = () => byId("discipline-list").append(disciplineRow());
+byId("discipline-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  byId("save-disciplines").disabled = true;
+  try {
+    const mappings = [...byId("discipline-list").children].map(row => ({
+      name: row.querySelector("input").value,
+      rule: row.querySelector("select").value,
+    }));
+    const data = await api("", {method: "PUT", body: JSON.stringify({mappings})}, "/api/admin/disciplines");
+    byId("discipline-list").replaceChildren(...data.mappings.map(disciplineRow));
+    byId("discipline-status").textContent = "Gespeichert · Anzeigen aktualisiert";
+  } catch (error) { byId("discipline-status").textContent = error.message; }
+  finally { byId("save-disciplines").disabled = false; }
+});
+
 byId("logo-form").addEventListener("submit", async event => {
   event.preventDefault();
   byId("upload-logo").disabled = true;
@@ -275,4 +325,5 @@ try {
   select(profiles[0]);
   await loadSponsors();
   await loadLogo();
+  await loadDisciplines();
 } catch (error) { message(error.message, true); }

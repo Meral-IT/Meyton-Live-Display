@@ -8,19 +8,9 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from xml.etree import ElementTree as ET
 
+from .disciplines import resolve_target_rule
+
 MAX_XML_BYTES = 2 * 1024 * 1024
-TARGET_RULES = {"10": "lg","10100": "lg", "10110": "lg", "10111": "lg", "10210": "lp",
-               "11009": "lg", "11011": "lg", "11012": "lg",
-               "18052": "schach10",
-               "40110": "kk", "40140": "kk", "40141": "kk", "40180": "kk",
-               "41209": "kk", "41211": "kk", "41212": "kk"}
-# Local copies use short IDs. Match verified names, not weapon prefixes.
-STANDARD_TARGET_NAMES = {"LG Auflage 30": "lg", "LG 20": "lg", "LP 40": "lp",
-                         "LG 5P 10W": "lg",
-                         "LG Schach 10x10": "schach10", "LG Schach 10x10 5W": "schach10",
-                         "LG Schach 5W": "schach10"}
-
-
 def stamp(value, milliseconds=0, *, sdf=False):
     if not value or str(value).startswith("0000-"):
         return None
@@ -238,7 +228,7 @@ class RangeState:
             self.targets[lane] = incoming
         return old != self.targets[lane]
 
-    def public(self, lane, profile):
+    def public(self, lane, profile, discipline_rules=None):
         target = self.targets.get(lane)
         if target is None:
             return None
@@ -275,12 +265,11 @@ class RangeState:
         if concealed or position == 0:
             result_series = [{**s, "score": None, "decimal_score": None} for s in result_series]
         last_public = next((s for s in safe_hits if latest and s["number"] == latest["number"]), None)
-        discipline_id = str(target["discipline_id"])
-        target_kind = TARGET_RULES.get(discipline_id[:5]) if len(discipline_id) == 8 else STANDARD_TARGET_NAMES.get(target["discipline"])
+        target_rule = resolve_target_rule(target["discipline_id"], target["discipline"], discipline_rules)
         return {
             "id": target["id"], "lane": lane, "shooter": target["shooter"],
             "discipline": target["discipline"], "discipline_id": target["discipline_id"],
-            "target_kind": target_kind,
+            "target_rule": target_rule,
             "position": position, "practice": position == 0, "shot_count": len(hits),
             "scored_shot_count": len(scored), "latest": last_public,
             "total": None if concealed else target["total"],

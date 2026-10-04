@@ -69,9 +69,9 @@ The editor supports creating, duplicating, saving, deleting, and previewing prof
 
 Upload and remove sponsor images and edit their optional text (up to 300 characters) in the editor’s **Sponsorenbilder** section. Images are shared across all profiles: PNG, JPEG and SVG, up to 5 MiB each and 64 images total. Empty cards show their empty-range message and a random image, fitted without cropping. Each range keeps its selection while empty so live updates do not flicker; an active target always takes precedence. Without images, the existing empty-card display is used. Uploads, removals, and text changes update connected viewers immediately. SVGs cannot contain scripts, event handlers, foreign HTML, DTDs, entities or external image references; image responses use a restricted content policy.
 
-Confirmed free ranges show an empty slot instead of their archived target. Occupied ranges wait for an export matching the live shooter. Ranges without confirmed occupancy retain their latest stored results until live occupancy is confirmed. An empty range retains its place. Practice and scored positions remain separate; practice hits do not add to scored totals. Totals use vendor values, not locally recalculated scores. Unsupported/custom disciplines retain their results but show no target geometry.
+Confirmed free ranges show an empty slot instead of their archived target. Occupied ranges wait for an export matching the live shooter. Ranges without confirmed occupancy retain their latest stored results until live occupancy is confirmed. An empty range retains its place. Practice and scored positions remain separate; practice hits do not add to scored totals. Totals use vendor values, not locally recalculated scores. Unsupported disciplines retain their results but show no target geometry. Administrators can map an exact local discipline name to a supported DSB rule or the custom `Schach10` rule in the profile editor; no name mappings are predefined. The global mapping persists in `disciplines.json` on the profiles volume.
 
-Supported standard target mappings use documented Meyton discipline IDs for LG/LP 10 m and KK 50 m events, including training events such as KK 5P+10W (41211010) and LG 5P+10W (11011010). The [Meyton discipline catalog](https://software.meyton.info/wp-content/uploads/Upload/Manuals/DE/ShootMaster/ShootMasterII_-_Disziplin_erstellen.pdf), section 19.3, supplies the standard IDs. Standard IDs take precedence. For short local IDs, the exact standard names LG Auflage 30 and LP 40 select their standard 10 m targets. LG Schach 10x10, LG Schach 10x10 5W, and the inspected local LG Schach 5W are supported using Meyton target definition 9010, obtained read-only through the installed LANA GetResults interface: a 90 mm square with 100 white 9 mm cells, black outlines, and the vendor’s 1/3/5/9 cell values. The canonical 18052 discipline family and these exact local names select this geometry. Other custom names, including Dart, remain unsupported; range numbers do not select target geometry. Geometry uses the [ISSF 2026 rule book](https://backoffice.issf-sports.org/getfile.aspx?file=ISSF-Rule-Book-2026-Edition-2025-Second-Print-07-2026-Effective-1-July-2026.pdf&inst=455&mod=docf&pane=1), rules 6.3.4.2, 6.3.4.3, and 6.3.4.6, with 4.5 mm and 5.6 mm projectile diameters. Scores always come from Meyton.
+Supported standard target mappings parse the documented Meyton eight-digit discipline ID as distance, four-digit DSB/Meyton rule, and shot count. Public targets expose the zero-padded four-digit `target_rule`; shot count does not affect geometry. The [Meyton discipline catalog](https://software.meyton.info/wp-content/uploads/Upload/Manuals/DE/ShootMaster/ShootMasterII_-_Disziplin_erstellen.pdf), sections 19 and 22, supplies rule metadata and target dimensions. The public rule catalog maps rules to descriptions, calibers, phase-specific target geometry, and reusable geometry definitions. Valid standard IDs take precedence over name mappings. Scores always come from Meyton.
 
 ## Sources and commissioning
 
@@ -135,7 +135,7 @@ One backend thread checks the committed revision every 50 ms and refreshes only 
 
 ## API and profile storage
 
-Public: `GET /api/profiles`, `GET /api/snapshot?profile=alles`, `GET /api/ranges/2?profile=alles`, `GET /api/events?profile=alles`, `GET /api/sponsors/{image_id}`, `GET /api/logo`, and internal `/healthz` (not exposed by Caddy).
+Public: `GET /api/profiles`, `GET /api/target-rules`, `GET /api/snapshot?profile=alles`, `GET /api/ranges/2?profile=alles`, `GET /api/events?profile=alles`, `GET /api/sponsors/{image_id}`, `GET /api/logo`, and internal `/healthz` (not exposed by Caddy).
 
 The single-range endpoint returns the normal snapshot shape with exactly one row and one range, retaining occupancy, source status, scores, concealment, and profile settings. `GET /api/events?profile=alles&lane=2` streams the corresponding live snapshot. Range numbers must be integers from 1 to 32767. Single views also work for ranges absent from saved profiles. All ranges are collected by the shared worker; opening a view creates no vendor request, connection, or range lease. Saved profiles remain unchanged.
 
@@ -143,9 +143,9 @@ The SSE endpoint sends a full `snapshot` on connection and reconnection, then on
 
 Every snapshot also includes `runtime_id`, generated once at backend startup. Displays reload the full page when a subsequent snapshot has a different ID, including after SSE reconnects. The editor checks the same ID through its existing preview refresh. Initial IDs and ordinary updates do not reload pages. HTML, JavaScript, and CSS responses require cache revalidation so reloads pick up deployed assets. Backend restarts also trigger reloads; frontend-only deployments need a backend restart to change the ID.
 
-Protected: `GET/PUT/DELETE /api/admin/logo`, `GET/POST /api/admin/sponsors`, `PUT/DELETE /api/admin/sponsors/{image_id}`, `GET /api/admin/auth`, `GET/POST /api/admin/profiles`, `POST /api/admin/profiles/preview`, and `PUT/DELETE /api/admin/profiles/{id}`. Draft previews are validated and use live range state without saving. Writes require Basic authentication and JSON; cross-origin browser mutations are rejected. Profile IDs remain stable on edits.
+Protected: `GET/PUT/DELETE /api/admin/logo`, `GET/POST /api/admin/sponsors`, `PUT/DELETE /api/admin/sponsors/{image_id}`, `GET/PUT /api/admin/disciplines`, `GET /api/admin/auth`, `GET/POST /api/admin/profiles`, `POST /api/admin/profiles/preview`, and `PUT/DELETE /api/admin/profiles/{id}`. Draft previews are validated and use live range state without saving. Writes require Basic authentication and JSON; cross-origin browser mutations are rejected. Profile IDs remain stable on edits.
 
-Backend storage: `/data/profiles.json` on the `profiles` Docker volume. Saves use a temporary file, fsync, and atomic replacement. Invalid existing storage fails startup instead of silently overwriting profiles.
+Backend storage: `/data/profiles.json` and `/data/disciplines.json` on the `profiles` Docker volume. Saves use a temporary file, fsync, and atomic replacement. Invalid existing storage fails startup instead of silently overwriting configuration.
 
 Logo uploads accept `PUT /api/admin/logo` with exactly `name` and base64 `data`, using the same PNG/JPEG/SVG validation and 5 MiB limit as sponsor images. Upload replaces the current logo atomically; delete restores the default title. Snapshots include `logo` metadata (or `null`), so connected displays update immediately. Image responses use a restricted content policy. The logo persists on the profiles volume; `LOGO_DIRECTORY` and the former branding mount are no longer used.
 
@@ -186,13 +186,14 @@ Stop the backend briefly to avoid edits during the configuration backup:
 mkdir -p .data/backups
 docker compose stop backend
 docker compose cp backend:/data/profiles.json .data/backups/profiles-backup.json
+docker compose cp backend:/data/disciplines.json .data/backups/disciplines-backup.json
 # When a custom logo is set:
 docker compose cp backend:/data/logo.json .data/backups/logo-backup.json
 docker compose cp backend:/data/sponsors .data/backups/sponsors-backup
 docker compose start backend
 ```
 
-Copy the whole sponsor directory, including text sidecars. Restore profiles, the optional logo file, and sponsor files with the backend stopped and ownership set to UID 10001. Restart the backend afterward. Profile saves use a temporary file, fsync, and atomic replacement; invalid existing profiles fail startup rather than being overwritten with defaults.
+Copy the whole sponsor directory, including text sidecars. Restore profiles, discipline mappings, the optional logo file, and sponsor files with the backend stopped and ownership set to UID 10001. Restart the backend afterward. Configuration saves use a temporary file, fsync, and atomic replacement; invalid existing configuration fails startup rather than being overwritten with defaults.
 
 ### Caddy data
 

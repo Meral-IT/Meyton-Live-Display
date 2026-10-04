@@ -19,6 +19,16 @@ def main():
     for entry in data["rows"][1]:
         entry.update(target=None, occupancy="unknown")
     errors = []
+    catalog = {"revision": 1, "geometries": {
+        "air_rifle": {"shape": "rings", "diameters": [45.5,40.5,35.5,30.5,25.5,20.5,15.5,10.5,5.5,.5], "black_diameter": 30.5},
+        "air_pistol": {"shape": "rings", "diameters": [155.5,139.5,123.5,107.5,91.5,75.5,59.5,43.5,27.5,11.5], "black_diameter": 59.5},
+        "rifle_50m": {"shape": "rings", "diameters": [154.4,138.4,122.4,106.4,90.4,74.4,58.4,42.4,26.4,10.4], "black_diameter": 112.4},
+        "schach10": {"shape": "schach10", "size": 90}}, "rules": [
+        {"rule": "0111", "caliber_mm": 4.5, "description": "LG", "geometry": "air_rifle", "positions": {}},
+        {"rule": "0210", "caliber_mm": 4.5, "description": "LP", "geometry": "air_pistol", "positions": {}},
+        {"rule": "1211", "caliber_mm": 5.6, "description": "KK", "geometry": "rifle_50m", "positions": {}},
+        {"rule": "Schach10", "caliber_mm": 4.5, "description": "Schach", "geometry": "schach10", "positions": {}}]}
+    disciplines = {"mappings": [{"name": "LG Schach 5W", "rule": "Schach10"}], "rules": catalog["rules"]}
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page(viewport={"width": 1440, "height": 900})
@@ -43,6 +53,12 @@ def main():
                 route.fulfill(json=[])
             elif path == "/api/admin/logo":
                 route.fulfill(body="null", content_type="application/json")
+            elif path == "/api/admin/disciplines":
+                if route.request.method == "PUT":
+                    disciplines["mappings"] = route.request.post_data_json["mappings"]
+                route.fulfill(json=disciplines)
+            elif path == "/api/target-rules":
+                route.fulfill(json=catalog)
             elif path == "/api/snapshot":
                 route.fulfill(json=data)
             else:
@@ -58,7 +74,7 @@ def main():
             return Object.entries(TARGETS).every(([kind, target]) => {
                 const hits = [{number: 1, position: 1, x_mm: 0.5, y_mm: -0.5}, {number: 2, position: 1, x_mm: -0.4, y_mm: 0.3}];
                 const extent = targetExtent(kind, hits, 'auto');
-                const state = {target_kind: kind, lane: 1, shots: hits, latest: hits[1]};
+                const state = {target_rule: kind, lane: 1, shots: hits, latest: hits[1]};
                 const svg = drawTarget(state, {zoom: 'auto', theme: {target: '#179c80'}});
                 const box = svg.viewBox.baseVal;
                 const circle = svg.querySelector('g[data-shot] circle');
@@ -108,7 +124,7 @@ def main():
         assert page.locator(".shot-border").count() == 1  # Another shot extends to 3 s.
         page.clock.run_for(1100)
         assert page.locator(".shot-border").count() == 0
-        data["rows"][0][1].update(target={**target, "id": 2, "target_kind": None, "latest": None}, occupancy="occupied")
+        data["rows"][0][1].update(target={**target, "id": 2, "target_rule": None, "latest": None}, occupancy="occupied")
         update()
         assert page.locator('[data-lane="2"].shot-border').count() == 1  # First shot, even without a supported target.
         data["profile"]["shot_highlight"] = "none"
@@ -225,6 +241,16 @@ def main():
         page.locator("#hide-unavailable").check()
         page.locator("#confetti-enabled").check()
         page.locator("#confetti-threshold").fill("10.9")
+        page.locator("#add-discipline").click()
+        page.locator(".discipline-row").last.locator("input").fill("Vereins-LG")
+        page.locator(".discipline-row").last.locator("select").select_option("0111")
+        page.locator("#save-disciplines").click()
+        page.locator("#discipline-status").get_by_text("Gespeichert · Anzeigen aktualisiert", exact=True).wait_for()
+        assert {"name": "Vereins-LG", "rule": "0111"} in disciplines["mappings"]
+        page.locator(".discipline-row").last.locator("button").click()
+        page.locator("#save-disciplines").click()
+        page.locator("#discipline-status").get_by_text("Gespeichert · Anzeigen aktualisiert", exact=True).wait_for()
+        assert {"name": "Vereins-LG", "rule": "0111"} not in disciplines["mappings"]
         page.locator("#save-profile").click()
         page.locator("#save-status").get_by_text("Gespeichert · Anzeigen aktualisiert", exact=True).wait_for()
         assert data["profile"]["shot_highlight"] == "border"

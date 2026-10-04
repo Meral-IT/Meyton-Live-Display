@@ -1,11 +1,21 @@
 // ISSF 2026, rules 6.3.4.2, 6.3.4.3, and 6.3.4.6. Geometry and shot centers use physical millimeters.
-export const TARGETS = {
-  lg: {diameters: [45.5, 40.5, 35.5, 30.5, 25.5, 20.5, 15.5, 10.5, 5.5, 0.5], bull: 30.5, caliber: 4.5},
-  kk: {diameters: [154.4, 138.4, 122.4, 106.4, 90.4, 74.4, 58.4, 42.4, 26.4, 10.4], bull: 112.4, caliber: 5.6},
-  lp: {diameters: [155.5, 139.5, 123.5, 107.5, 91.5, 75.5, 59.5, 43.5, 27.5, 11.5], bull: 59.5, caliber: 4.5},
-  // Meyton LANA GetResults, TargetDefinition 9010: 100 white 9 mm cells.
-  schach10: {size: 90, caliber: 4.5},
-};
+export const TARGETS = {};
+
+export function setTargetCatalog(catalog) {
+  for (const key of Object.keys(TARGETS)) delete TARGETS[key];
+  for (const rule of catalog.rules) {
+    const geometryKey = rule.positions?.["1"] || rule.geometry;
+    const geometry = catalog.geometries[geometryKey];
+    const caliber = Array.isArray(rule.caliber_mm) ? Math.max(...rule.caliber_mm) : rule.caliber_mm;
+    if (geometry && caliber) TARGETS[rule.rule] = {...geometry, caliber, positions: Object.fromEntries(
+      Object.entries(rule.positions || {}).map(([position, key]) => [position, {...catalog.geometries[key], caliber}]))};
+  }
+}
+
+function targetFor(state) {
+  const target = TARGETS[state.target_rule];
+  return target?.positions?.[String(state.position)] || target;
+}
 
 function svgElement(tag, attributes, text) {
   const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
@@ -14,8 +24,8 @@ function svgElement(tag, attributes, text) {
   return node;
 }
 
-export function targetExtent(kind, hits, zoom) {
-  const target = TARGETS[kind];
+export function targetExtent(kind, hits, zoom, selected) {
+  const target = selected || TARGETS[kind];
   const full = (target.size || target.diameters[0]) / 2 + target.caliber;
   if (zoom === "full" || !hits.length) return full;
   // A centered view includes the whole projectile circle, not just its center.
@@ -24,12 +34,12 @@ export function targetExtent(kind, hits, zoom) {
 }
 
 export function drawTarget(state, profile) {
-  const target = TARGETS[state.target_kind];
+  const target = targetFor(state);
   const hits = state.shots.filter(hit => Number.isFinite(hit.x_mm) && Number.isFinite(hit.y_mm));
-  const extent = targetExtent(state.target_kind, hits, profile.zoom);
-  const svg = svgElement("svg", {viewBox: `${-extent} ${-extent} ${extent * 2} ${extent * 2}`, "data-target-kind": state.target_kind, role: "img", "aria-label": `Schussbild Stand ${state.lane}, ${hits.length} Treffer`});
+  const extent = targetExtent(state.target_rule, hits, profile.zoom, target);
+  const svg = svgElement("svg", {viewBox: `${-extent} ${-extent} ${extent * 2} ${extent * 2}`, "data-target-rule": state.target_rule, role: "img", "aria-label": `Schussbild Stand ${state.lane}, ${hits.length} Treffer`});
   svg.append(svgElement("rect", {x: -extent, y: -extent, width: extent * 2, height: extent * 2, fill: "#ffffff"}));
-  if (state.target_kind === "schach10") {
+  if (target.shape === "schach10") {
     for (let row = 0; row < 10; row++) {
       for (let column = 0; column < 10; column++) {
         const x = -45 + column * 9, y = -45 + row * 9;
@@ -42,10 +52,10 @@ export function drawTarget(state, profile) {
     }
   } else {
     svg.append(svgElement("circle", {cx: 0, cy: 0, r: target.diameters[0] / 2, fill: profile.theme.target}));
-    svg.append(svgElement("circle", {cx: 0, cy: 0, r: target.bull / 2, fill: "#052a22", opacity: 0.15}));
+    svg.append(svgElement("circle", {cx: 0, cy: 0, r: target.black_diameter / 2, fill: "#052a22", opacity: 0.15}));
     target.diameters.forEach((diameter, index) => {
       const radius = diameter / 2;
-      svg.append(svgElement("circle", {cx: 0, cy: 0, r: radius, fill: index === 9 && state.target_kind === "lg" ? "#ffffff" : "none", stroke: "#e8fff6", "stroke-width": Math.max(0.12, extent / 190)}));
+      svg.append(svgElement("circle", {cx: 0, cy: 0, r: radius, fill: "none", stroke: "#e8fff6", "stroke-width": Math.max(0.12, extent / 190)}));
       const next = (target.diameters[index + 1] || 0) / 2;
       const labelPosition = (radius + next) / 2;
       if (index < 8 && labelPosition < extent * 0.94) {

@@ -12,6 +12,7 @@ from xml.etree.ElementTree import ParseError
 
 from fastapi.testclient import TestClient
 
+from app.disciplines import DisciplineMapping, DisciplineMappings, DisciplineStore, public_catalog, resolve_target_rule
 from app.domain import MAX_XML_BYTES, RangeState, from_db, parse_sdf, score, shooter_name, stamp, target_id
 from app.main import create_app
 from app.profiles import Profile, ProfileStore, seeds
@@ -89,31 +90,60 @@ class DomainChecks(unittest.TestCase):
         state.apply(target())
         profile = Profile(id="test", name="Test", rows=[[1]])
         for discipline_id, name, expected in [
-            (10111030, "LG Auflage 30", "lg"),
-            (4, "LG Auflage 30", "lg"),
-            (41211010, "KK 5P+10W", "kk"),
-            (41209005, "KK 3P+5W", "kk"),
-            (41209010, "KK 3P+10W", "kk"),
-            (11011010, "LG 5P+10W", "lg"),
-            (11009005, "LG 3P+5W", "lg"),
-            (11012003, "LG 3W", "lg"),
-            (18052005, "LG Schach 10x10 5W", "schach10"),
-            (18052010, "LG Schach 10x10", "schach10"),
-            (16, "LG Schach 10x10 5W", "schach10"),
-            (2, "LG Schach 5W", "schach10"),
-            (18054010, "LG Dart", None),
-            (10210040, "LP 40", "lp"),
-            (6, "LP 40", "lp"),
-            (4, "LG Schach 10x10 5W", "schach10"),
+            (10111030, "LG Auflage 30", "0111"),
+            (4, "LG Auflage 30", None),
+            (41211010, "KK 5P+10W", "1211"),
+            (41209005, "KK 3P+5W", "1209"),
+            (41209010, "KK 3P+10W", "1209"),
+            (11011010, "LG 5P+10W", "1011"),
+            (11009005, "LG 3P+5W", "1009"),
+            (11012003, "LG 3W", "1012"),
+            (18052005, "LG Schach 10x10 5W", "8052"),
+            (18052010, "LG Schach 10x10", "8052"),
+            (16, "LG Schach 10x10 5W", None),
+            (2, "LG Schach 5W", None),
+            (18054010, "LG Dart", "8054"),
+            (10210040, "LP 40", "0210"),
+            (6, "LP 40", None),
+            (4, "LG Schach 10x10 5W", None),
             (4, "LG Dart", None),
             (4, "Eigene Scheibe", None),
-            (18054010, "LG Auflage 30", None),  # A nonstandard ID takes precedence.
-            (50135030, "KK 100m 30", None),
+            (18054010, "LG Auflage 30", "8054"),
+            (50135030, "KK 100m 30", "0135"),
         ]:
             with self.subTest(discipline=name):
                 state.targets[1]["discipline_id"] = discipline_id
                 state.targets[1]["discipline"] = name
-                self.assertEqual(state.public(1, profile)["target_kind"], expected)
+                self.assertEqual(state.public(1, profile)["target_rule"], expected)
+
+    def test_discipline_rule_resolution_and_configuration(self):
+        self.assertEqual(resolve_target_rule(10111001, "ignored", {}), "0111")
+        self.assertEqual(resolve_target_rule(10111999, "ignored", {}), "0111")
+        self.assertEqual(resolve_target_rule(4, "Vereins-LG", {"Vereins-LG": "0110"}), "0110")
+        self.assertEqual(resolve_target_rule(18054010, "Vereins-LG", {"Vereins-LG": "0110"}), "8054")
+        self.assertIsNone(resolve_target_rule(4, "vereins-lg", {"Vereins-LG": "0110"}))
+        with self.assertRaises(ValueError):
+            DisciplineMapping(name="Test", rule="01.10")
+        with self.assertRaises(ValueError):
+            DisciplineMappings(mappings=[
+                DisciplineMapping(name="Test", rule="0110"),
+                DisciplineMapping(name=" Test ", rule="0210"),
+            ])
+
+    def test_discipline_store_atomic_persistence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "disciplines.json"
+            store = DisciplineStore(path)
+            self.assertEqual(store.rules, {})
+            configuration = DisciplineMappings(mappings=[DisciplineMapping(name="Vereins-LG", rule="0110")])
+            store.save(configuration)
+            self.assertEqual(DisciplineStore(path).rules, {"Vereins-LG": "0110"})
+            with patch("app.disciplines.os.replace", side_effect=OSError("disk unavailable")):
+                with self.assertRaises(OSError):
+                    store.save(DisciplineMappings(mappings=[]))
+            self.assertEqual(store.rules, {"Vereins-LG": "0110"})
+            catalog = public_catalog()
+            self.assertTrue(all({"rule", "caliber_mm", "description"} <= set(item) for item in catalog["rules"]))
 
     def test_vendor_encodings_and_safe_xml(self):
         db = from_db({"ScheibenID": -1, "StandNr": 54, "Nachname": "Test", "Vorname": "Ada", "Disziplin": "Test",
@@ -213,7 +243,7 @@ class DomainChecks(unittest.TestCase):
         state.targets[1] = target()
         state.targets[1]["discipline_id"] = 9
         state.targets[1]["discipline"] = "Eigene Scheibe"
-        self.assertIsNone(state.public(1, profile)["target_kind"])
+        self.assertIsNone(state.public(1, profile)["target_rule"])
 
 
 class ProfileAndAPIChecks(unittest.TestCase):
@@ -468,11 +498,20 @@ class ProfileAndAPIChecks(unittest.TestCase):
                 profile = {**profiles[0], "id": "test", "name": "Test"}
                 self.assertEqual(client.post("/api/admin/profiles", json=profile).status_code, 401)
                 auth = ("admin", "test-password")
+                self.assertEqual(client.get("/api/admin/disciplines").status_code, 401)
+                discipline_data = client.get("/api/admin/disciplines", auth=auth).json()
+                self.assertTrue(any(item["rule"] == "Schach10" for item in discipline_data["rules"]))
+                mapping = {"mappings": [{"name": "Eigene Scheibe", "rule": "0110"}]}
+                self.assertEqual(client.put("/api/admin/disciplines", json=mapping, auth=auth).status_code, 200)
+                runtime = app.state.runtime
+                runtime.ranges.targets[1]["discipline_id"] = 9
+                runtime.ranges.targets[1]["discipline"] = "Eigene Scheibe"
+                self.assertEqual(client.get("/api/snapshot").json()["rows"][0][0]["target"]["target_rule"], "0110")
+                self.assertEqual(client.put("/api/admin/disciplines", json={"mappings": [{"name": "X", "rule": "Darts"}]}, auth=auth).status_code, 422)
                 self.assertEqual(client.post("/api/admin/profiles", json=profile, auth=auth).status_code, 201)
                 self.assertEqual(client.post("/api/admin/profiles", json=profile, auth=auth).status_code, 409)
                 self.assertEqual(client.put("/api/admin/profiles/test", json=profile, auth=auth, headers={"Origin": "https://other.invalid"}).status_code, 403)
                 self.assertEqual(client.delete("/api/admin/profiles/test", auth=auth, headers={"Content-Type": "application/json"}).status_code, 204)
-                runtime = app.state.runtime
                 draft = {**profile, "rows": [[1, 55]], "hits": "all"}
                 preview = client.post("/api/admin/profiles/preview", json=draft, auth=auth)
                 self.assertEqual(preview.status_code, 200)

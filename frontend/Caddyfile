@@ -22,7 +22,7 @@
         file_server
     }
     @public_api {
-        path /api/profiles /api/snapshot /api/events /api/ranges/* /api/sponsors/* /api/logo
+        path /api/profiles /api/target-rules /api/snapshot /api/events /api/ranges/* /api/sponsors/* /api/logo
         method GET
     }
     handle @public_api {

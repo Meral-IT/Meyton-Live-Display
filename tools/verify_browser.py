@@ -22,7 +22,7 @@ def example(profile):
     for row in profile.rows:
         entries = []
         for lane in row:
-            kind = "lp" if lane == 1 else "schach10" if lane == 2 else "lg" if lane < 50 else "kk"
+            kind = "0210" if lane == 1 else "Schach10" if lane == 2 else "0111" if lane < 50 else "1211"
             shots = [{"position": 1, "number": n, "series": 1, "x_mm": (n - 5) * (0.55 if lane < 50 else 2.1),
                       "y_mm": ((n * 3) % 7 - 3) * (0.4 if lane < 50 else 2.5),
                       "score": {"value": 100 + n % 9, "scale": 10, "unit": "ZehntelRing"},
@@ -30,7 +30,7 @@ def example(profile):
                       "inner_ten": False, "invalid": False, "timestamp": now} for n in range(1, 11)]
             entries.append({"lane": lane, "occupancy": "occupied", "target": {
                 "id": lane, "lane": lane, "shooter": "Unbekannt" if lane == 2 else f"Mustermann, {'Anna' if lane % 2 else 'Max'}",
-                "discipline": {"lp": "LP 40", "lg": "LG Auflage 30", "kk": "KK Auflage 30", "schach10": "LG Schach 10x10 5W"}[kind], "target_kind": kind,
+                "discipline": {"0210": "LP 40", "0111": "LG Auflage 30", "1211": "KK Auflage 30", "Schach10": "LG Schach 10x10 5W"}[kind], "target_rule": kind,
                 "position": 0 if lane == 4 else 1, "practice": lane == 4, "shot_count": 10, "latest": shots[-1], "shots": shots,
                 "total": {"value": 990, "scale": 10, "unit": "Ring"},
                 "series": [{"number": 1, "score": {"value": 990, "scale": 10, "unit": "Ring"}}],
@@ -117,8 +117,8 @@ def main():
             assert float(shot.locator("circle").get_attribute("cy")) == -y
             assert page.locator('[data-latest="true"]').count() == len(lanes)
             assert page.locator("svg").evaluate_all("nodes => nodes.every(svg => svg.querySelector(':scope > rect').getAttribute('fill') === '#ffffff' && getComputedStyle(svg.parentElement).backgroundColor === 'rgb(255, 255, 255)')")
-            for kind in ("lg", "lp", "kk"):
-                circles = page.locator(f'svg[data-target-kind="{kind}"] > circle:first-of-type')
+            for kind in ("0111", "0210", "1211"):
+                circles = page.locator(f'svg[data-target-rule="{kind}"] > circle:first-of-type')
                 assert circles.evaluate_all("nodes => nodes.every(circle => circle.getAttribute('fill') === '#179c80')")
             assert page.locator("svg").evaluate_all("nodes => nodes.every(svg => { const box=svg.viewBox.baseVal; return [...svg.querySelectorAll('g[data-shot] circle')].every(c => { const x=+c.getAttribute('cx'), y=+c.getAttribute('cy'), r=+c.getAttribute('r') + +c.getAttribute('stroke-width')/2; return x-r>=box.x && y-r>=box.y && x+r<=box.x+box.width && y+r<=box.y+box.height; }); })")
             if profile_id == "alles":
@@ -130,7 +130,7 @@ def main():
                 assert marker.evaluate("node => { const r=node.getBoundingClientRect(), t=node.parentElement.getBoundingClientRect(); return getComputedStyle(node).backgroundColor==='rgb(0, 0, 0)' && getComputedStyle(node).clipPath==='polygon(0px 0px, 100% 0px, 100% 100%)' && Math.abs(r.top-t.top)<1 && Math.abs(r.right-t.right)<1; }")
                 assert page.locator('[data-lane="1"] .practice-marker').count() == 0
                 assert page.locator('[data-lane="2"] .shooter').inner_text() == "Unbekannt"
-                schach = page.locator('[data-lane="2"] svg[data-target-kind="schach10"]')
+                schach = page.locator('[data-lane="2"] svg[data-target-rule="Schach10"]')
                 assert schach.locator("g[data-cell]").count() == 100
                 for cell, x, y, value in [("0,0", -45, -45, "1"), ("1,0", -45, -36, "5"), ("9,9", 36, 36, "9")]:
                     node = schach.locator(f'[data-cell="{cell}"]')
@@ -138,8 +138,8 @@ def main():
                     assert node.locator("rect").get_attribute("x") == str(x)
                     assert node.locator("rect").get_attribute("y") == str(y)
                     assert node.locator("rect").get_attribute("width") == "9"
-                assert page.evaluate("async () => (await import('/target.js')).targetExtent('schach10', [], 'full')") == 49.5
-                pistol = page.locator('[data-lane="1"] svg[data-target-kind="lp"]')
+                assert page.evaluate("async () => (await import('/target.js')).targetExtent('Schach10', [], 'full')") == 49.5
+                pistol = page.locator('[data-lane="1"] svg[data-target-rule="0210"]')
                 assert pistol.locator(":scope > circle").evaluate_all("nodes => nodes.map(node => +node.getAttribute('r'))") == [77.75, 29.75, 77.75, 69.75, 61.75, 53.75, 45.75, 37.75, 29.75, 21.75, 13.75, 5.75]
                 assert pistol.locator('g[data-shot="10"] circle').evaluate("c => Math.abs(2 * +c.getAttribute('r') + +c.getAttribute('stroke-width') - 4.5) < 1e-9")
                 page.screenshot(path=str(output / "alles.png"))
@@ -289,6 +289,20 @@ def main():
                     return bounds.left >= form.left - 1 && bounds.right <= form.right + 1;
                 }"""), (width, selector)
         editor.set_viewport_size({"width": 1600, "height": 1000})
+        original_disciplines = admin.request.get(f"{admin_url}/api/admin/disciplines").json()["mappings"]
+        editor.locator("#add-discipline").click()
+        custom_row = editor.locator(".discipline-row").last
+        custom_row.locator("input").fill("Browser Testdisziplin")
+        custom_row.locator("select").select_option("0110")
+        editor.locator("#save-disciplines").click()
+        editor.locator("#discipline-status").get_by_text("Gespeichert · Anzeigen aktualisiert", exact=True).wait_for()
+        saved_disciplines = admin.request.get(f"{admin_url}/api/admin/disciplines").json()["mappings"]
+        assert {"name": "Browser Testdisziplin", "rule": "0110"} in saved_disciplines
+        custom_row.locator("button").click()
+        editor.locator("#save-disciplines").click()
+        editor.locator("#discipline-status").get_by_text("Gespeichert · Anzeigen aktualisiert", exact=True).wait_for()
+        assert {"name": "Browser Testdisziplin", "rule": "0110"} not in admin.request.get(f"{admin_url}/api/admin/disciplines").json()["mappings"]
+        admin.request.put(f"{admin_url}/api/admin/disciplines", data={"mappings": original_disciplines}, headers={"Content-Type": "application/json"})
         temporary_id = "browser-check-" + str(int(time.time()))
         editor.locator("#new-profile").click()
         editor.locator("#name").fill("Browserprüfung")

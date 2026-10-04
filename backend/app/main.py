@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel, ConfigDict, Field
 
+from .disciplines import DisciplineMappings, DisciplineStore, public_catalog
 from .domain import RangeState, iso
 from .profiles import Profile, ProfileStore
 from .sponsors import IMAGE_POLICY, MAX_REQUEST_BYTES, TYPES, LogoStore, SponsorStore
@@ -30,6 +31,7 @@ class Runtime:
     def __init__(self, path):
         self.id = secrets.token_hex(16)
         self.profiles = ProfileStore(path)
+        self.disciplines = DisciplineStore(self.profiles.path.parent / "disciplines.json")
         self.sponsors = SponsorStore(self.profiles.path.parent / "sponsors")
         self.logo = LogoStore(self.profiles.path.parent / "logo.json")
         self.ranges = RangeState()
@@ -72,7 +74,8 @@ class Runtime:
         occupancy_confirmed = all(self.status.get(source, {}).get("state") == "connected" for source in ("worker", "local_db")) and any(
             self.status.get(source, {}).get("state") == "connected" for source in ("lana", "demo"))
         return {"runtime_id": self.id, "profile": profile.model_dump(), "revision": self.revision,
-                "rows": [[{"lane": lane, "target": self.ranges.public(lane, profile),
+                "rule_catalog_revision": public_catalog()["revision"],
+                "rows": [[{"lane": lane, "target": self.ranges.public(lane, profile, self.disciplines.rules),
                            "live_shooter": self.ranges.live_shooters.get(lane),
                            "occupancy": self.ranges.occupancy.get(lane, "unknown") if occupancy_confirmed else "unknown"}
                           for lane in row] for row in profile.rows],
@@ -158,6 +161,10 @@ def create_app(profile_path=None, *, result_path=None):
     @app.get("/api/profiles")
     def profiles(request: Request):
         return [p.model_dump() for p in request.app.state.runtime.profiles.profiles]
+
+    @app.get("/api/target-rules")
+    def target_rules():
+        return public_catalog()
 
     @app.get("/api/snapshot")
     async def snapshot(request: Request, profile: str = "alles"):
@@ -311,6 +318,21 @@ def create_app(profile_path=None, *, result_path=None):
     @app.get("/api/admin/profiles", dependencies=[Depends(admin)])
     def admin_profiles(request: Request):
         return profiles(request)
+
+    @app.get("/api/admin/disciplines", dependencies=[Depends(admin)])
+    def discipline_mappings(request: Request):
+        return {**request.app.state.runtime.disciplines.configuration.model_dump(),
+                "rules": public_catalog()["rules"]}
+
+    @app.put("/api/admin/disciplines", dependencies=[Depends(admin)])
+    async def save_discipline_mappings(configuration: DisciplineMappings, request: Request):
+        runtime = request.app.state.runtime
+        try:
+            await asyncio.to_thread(runtime.disciplines.save, configuration)
+        except OSError:
+            raise HTTPException(503, "Disziplinzuordnung konnte nicht gespeichert werden")
+        runtime.notify()
+        return discipline_mappings(request)
 
     @app.post("/api/admin/profiles/preview", dependencies=[Depends(admin)])
     async def preview_profile(profile: Profile, request: Request):

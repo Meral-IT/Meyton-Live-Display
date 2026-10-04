@@ -83,15 +83,18 @@ h2 { font-size: 17px; margin: 0 0 14px; }
 .profile-choice.selected { background: #e1efe6; border-color: #b9d4c4; color: #126b46; }
 #new-profile { width: 100%; margin-top: 12px; }
 .profile-settings { background: #fff; padding: 24px; border-radius: 9px; border: 1px solid #dce6df; }
-.sponsor-settings .form-note, .logo-settings .form-note { margin-bottom: 16px; }
+.sponsor-settings .form-note, .logo-settings .form-note, .discipline-settings .form-note { margin-bottom: 16px; }
 .logo-preview { max-width: 100%; max-height: 80px; object-fit: contain; margin-bottom: 16px; }
-#sponsor-status, #logo-status { font-size: 12px; }
+#sponsor-status, #logo-status, #discipline-status { font-size: 12px; }
 .logo-settings .form-actions { flex-wrap: wrap; }
 .sponsor-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .sponsor-item { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .sponsor-item img { width: 100%; height: 96px; object-fit: contain; border: 1px solid #dbe4df; background: #fff; }
 .sponsor-item span { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sponsor-item label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; }
+.discipline-list { display: flex; flex-direction: column; gap: 8px; }
+.discipline-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(110px, .45fr) auto; gap: 8px; }
+.discipline-row button { padding-inline: 11px; }
 .section-heading { display: flex; justify-content: space-between; gap: 10px; align-items: center; margin-bottom: 22px; }
 .section-heading h2 { margin: 0; }
 .eyebrow { font-size: 9px; font-weight: 700; color: #72877b; letter-spacing: 1.3px; display: block; margin-bottom: 6px; }
@@ -121,7 +124,7 @@ input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px;
 iframe { position: absolute; width: 1920px; height: 1080px; border: 0; transform-origin: top left; }
 .profile-preview p { font-size: 11px; color: #73847a; line-height: 1.65; margin: 11px 0 25px; }
 .stream-link { display: flex; flex-direction: column; align-items: stretch; gap: 8px; background: #fff; border: 1px solid #dce6df; border-radius: 8px; padding: 17px; }
-.stream-link.logo-settings, .stream-link.sponsor-settings { display: block; margin-top: 16px; }
+.stream-link.logo-settings, .stream-link.sponsor-settings, .stream-link.discipline-settings { display: block; margin-top: 16px; }
 .stream-link label { width: 100%; margin-bottom: 3px; }
 .stream-link input { font-size: 12px; }
 .obs-url-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }

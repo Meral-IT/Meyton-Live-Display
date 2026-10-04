@@ -1,4 +1,4 @@
-import {drawTarget, TARGETS} from "/target.js";
+import {drawTarget, setTargetCatalog, TARGETS} from "/target.js";
 import {updateLogo} from "/branding.js";
 import {checkRuntime} from "/reload.js";
 
@@ -15,6 +15,7 @@ const element = (tag, className, text) => {
 let stream;
 let previewSnapshot;
 let profiles = [];
+let ruleCatalogRevision;
 const sponsorChoices = new Map();
 const shotHighlights = new Map();
 const params = new URLSearchParams(location.search);
@@ -91,7 +92,7 @@ function tile(entry, profile, sponsors) {
   }
   card.append(stats);
   const target = element("div", "target-view");
-  if (TARGETS[state.target_kind]) {
+  if (TARGETS[state.target_rule]) {
     target.append(drawTarget(state, profile));
     if (state.practice) {
       const marker = element("span", "practice-marker");
@@ -137,6 +138,10 @@ function tile(entry, profile, sponsors) {
 
 function render(snapshot, liveUpdate = false) {
   if (checkRuntime(snapshot.runtime_id)) return;
+  if (snapshot.rule_catalog_revision !== undefined && snapshot.rule_catalog_revision !== ruleCatalogRevision) {
+    loadTargetCatalog().then(() => render(snapshot, liveUpdate));
+    return;
+  }
   snapshot = previewSnapshot || snapshot;
   updateLogo(snapshot.logo);
   const profile = snapshot.profile;
@@ -194,7 +199,7 @@ function render(snapshot, liveUpdate = false) {
   requestAnimationFrame(() => requestAnimationFrame(() => {
     document.dispatchEvent(new CustomEvent("meyton-render", {detail: {
       revision: snapshot.revision, rendered_at: Date.now(),
-      shots: snapshot.rows.flat().filter(entry => entry.target?.latest && TARGETS[entry.target.target_kind]).map(entry => ({
+      shots: snapshot.rows.flat().filter(entry => entry.target?.latest && TARGETS[entry.target.target_rule]).map(entry => ({
         lane: entry.lane, target_id: entry.target.id, ...entry.target.latest,
       })),
     }}));
@@ -212,6 +217,14 @@ async function loadProfiles() {
     return option;
   }));
   return profiles;
+}
+
+async function loadTargetCatalog() {
+  const response = await fetch("/api/target-rules", {cache: "no-store"});
+  if (!response.ok) throw new Error("Regelkatalog konnte nicht geladen werden");
+  const catalog = await response.json();
+  setTargetCatalog(catalog);
+  ruleCatalogRevision = catalog.revision;
 }
 
 async function connect(id) {
@@ -259,6 +272,7 @@ clock();
 setInterval(clock, 1000);
 async function start() {
   try {
+    await loadTargetCatalog();
     await loadProfiles();
     if (range !== null && (!Number.isInteger(range) || range < 1 || range > 32767)) throw new Error("Standnummer ungültig");
     const id = location.pathname.startsWith("/display/") ? location.pathname.split("/")[2] : params.get("profile") || profiles[0].id;
