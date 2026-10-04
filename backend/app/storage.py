@@ -72,13 +72,19 @@ class ResultStore:
         self.connection.execute("PRAGMA synchronous=FULL")
         self.connection.execute("PRAGMA foreign_keys=ON")
         version = self.connection.execute("PRAGMA user_version").fetchone()[0]
-        if version not in (0, 1):
+        if version not in (0, 1, 2):
             raise ValueError("Unsupported local result database version")
+        if version == 1:
+            with self.connection:
+                self.connection.execute("ALTER TABLE meta ADD COLUMN stand_changed_at REAL NOT NULL DEFAULT 0")
+                self.connection.execute("UPDATE meta SET stand_changed_at=? WHERE id=1", (time.time(),))
+                self.connection.execute("PRAGMA user_version=2")
         self.connection.executescript("""
             CREATE TABLE IF NOT EXISTS meta (
                 id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL DEFAULT 0,
                 heartbeat REAL NOT NULL DEFAULT 0, collection_started_at REAL,
-                retention_days INTEGER NOT NULL, sources TEXT NOT NULL);
+                retention_days INTEGER NOT NULL, sources TEXT NOT NULL,
+                stand_changed_at REAL NOT NULL DEFAULT 0);
             CREATE TABLE IF NOT EXISTS baselines (id INTEGER PRIMARY KEY, shot_after REAL NOT NULL);
             CREATE TABLE IF NOT EXISTS targets (
                 id INTEGER PRIMARY KEY, lane INTEGER NOT NULL, activity_at REAL NOT NULL, payload TEXT NOT NULL);
@@ -87,18 +93,19 @@ class ResultStore:
                 lane INTEGER PRIMARY KEY, target_id INTEGER REFERENCES targets(id) ON DELETE SET NULL,
                 occupancy TEXT NOT NULL DEFAULT 'unknown', live_shooter TEXT,
                 cleared_id INTEGER, cleared_shot REAL);
-            PRAGMA user_version=1;
+            PRAGMA user_version=2;
         """)
         sources = {name: {"state": "starting", "message": "Verbindung wird hergestellt", "last_check_at": None}
                    for name in ("db", "sdf", "lana")}
         with self.connection:
-            self.connection.execute("INSERT OR IGNORE INTO meta(id,retention_days,sources) VALUES(1,?,?)",
-                                    (days, json.dumps(sources)))
+            self.connection.execute("INSERT OR IGNORE INTO meta(id,retention_days,sources,stand_changed_at) VALUES(1,?,?,?)",
+                                    (days, json.dumps(sources), time.time()))
             self.connection.execute("UPDATE meta SET retention_days=?,revision=revision+1 WHERE id=1 AND retention_days!=?",
                                     (days, days))
         self.days = days
         self.ranges, self.sources, meta = read_snapshot(self.connection)
         self.started_at = meta["collection_started_at"]
+        self.stand_changed_at = meta["stand_changed_at"]
         self._checked_at = {}
 
     def close(self):
@@ -191,15 +198,18 @@ class ResultStore:
                 changed = True
             if changed:
                 self._save_ranges()
-                self.connection.execute("UPDATE meta SET revision=revision+1 WHERE id=1")
+                self.connection.execute("UPDATE meta SET revision=revision+1,stand_changed_at=? WHERE id=1", (now,))
+                self.stand_changed_at = now
         return changed
 
-    def occupancy(self, lanes):
+    def occupancy(self, lanes, now=None):
         if not self.ranges.set_occupancy(lanes):
             return False
+        now = time.time() if now is None else now
         with self.connection:
             self._save_ranges()
-            self.connection.execute("UPDATE meta SET revision=revision+1 WHERE id=1")
+            self.connection.execute("UPDATE meta SET revision=revision+1,stand_changed_at=? WHERE id=1", (now,))
+        self.stand_changed_at = now
         return True
 
     def source_status(self, source, state, message, now=None):

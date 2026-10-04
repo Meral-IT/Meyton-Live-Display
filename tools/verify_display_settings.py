@@ -15,6 +15,10 @@ def main():
     data["runtime_id"] = "runtime-one"
     data["profile"].update(shot_highlight="background", hide_unavailable=True)
     data["sources"].update({name: {"state": "connected"} for name in ("worker", "local_db", "lana")})
+    resource = {"settings": {"enabled": False, "poll_interval_seconds": 10},
+                "status": {"enabled": False, "active": False, "reasons": [], "poll_interval_seconds": 10,
+                           "viewer_count": 1, "last_viewer_seen_at": 0, "last_stand_change_at": 0,
+                           "last_transition_at": 0}}
     data["rows"][0][1].update(target=None, occupancy="free")
     for entry in data["rows"][1]:
         entry.update(target=None, occupancy="unknown")
@@ -43,6 +47,11 @@ def main():
                 route.fulfill(json=[])
             elif path == "/api/admin/logo":
                 route.fulfill(body="null", content_type="application/json")
+            elif path == "/api/admin/settings/resource-saver":
+                if route.request.method == "PUT":
+                    resource["settings"] = route.request.post_data_json
+                    resource["status"].update(resource["settings"])
+                route.fulfill(json=resource)
             elif path == "/api/snapshot":
                 route.fulfill(json=data)
             else:
@@ -225,18 +234,25 @@ def main():
         page.locator("#hide-unavailable").check()
         page.locator("#confetti-enabled").check()
         page.locator("#confetti-threshold").fill("10.9")
+        page.locator("#resource-saver-enabled").check()
+        page.locator("#resource-saver-interval").fill("15")
+        page.locator("#save-resource-saver").click()
+        page.locator("#resource-saver-status").get_by_text("Gespeichert", exact=False).wait_for()
         page.locator("#save-profile").click()
         page.locator("#save-status").get_by_text("Gespeichert · Anzeigen aktualisiert", exact=True).wait_for()
         assert data["profile"]["shot_highlight"] == "border"
         assert data["profile"]["hide_unavailable"] is True
         assert data["profile"]["confetti_enabled"] is True
         assert data["profile"]["confetti_threshold"] == 10.9
+        assert resource["settings"] == {"enabled": True, "poll_interval_seconds": 15}
         page.reload()
         page.wait_for_selector(".profile-choice")
         assert page.locator("#shot-highlight").input_value() == "border"
         assert page.locator("#hide-unavailable").is_checked()
         assert page.locator("#confetti-enabled").is_checked()
         assert page.locator("#confetti-threshold").input_value() == "10.9"
+        assert page.locator("#resource-saver-enabled").is_checked()
+        assert page.locator("#resource-saver-interval").input_value() == "15"
         data["runtime_id"] = "runtime-three"
         with page.expect_navigation():
             page.locator("#save-profile").click()

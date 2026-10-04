@@ -10,6 +10,7 @@ Live shooting results for Meyton ShootMaster SSMDB2, displayed in a German-langu
 - Editable display profiles, colors, layouts, and visible fields.
 - Single-stand views and OBS modes with reduced screen controls.
 - Sponsor images and optional text on empty stands.
+- Optional resource-saver mode that reduces ShootMaster polling while idle or unattended.
 - Docker deployment with persistent results and settings; a demo mode needs no Meyton connection.
 
 > Intended for a trusted local network. Public displays show shooter names and results without authentication. Do not expose this application directly to the internet. Physical-shot latency depends on the vendor export and has not been independently verified across installations.
@@ -129,7 +130,7 @@ Fresh installations create these editable profiles. Existing saved profiles are 
 | `/range/2` | A single stand; click a stand label to open this view. |
 | `/admin` | Profile editor and sponsor management; HTTPS and login required. |
 
-Use the editor to create, duplicate, preview, save, and delete profiles. Configure stand rows, colors, displayed fields, practice visibility, shot selection, and target zoom. Changes reach connected viewers without a restart. Sponsor images can include optional text and appear on empty stands.
+Use the editor to create, duplicate, preview, save, and delete profiles. Configure stand rows, colors, displayed fields, practice visibility, shot selection, and target zoom. Changes reach connected viewers without a restart. Sponsor images can include optional text and appear on empty stands. The global **Ressourcenschonmodus** can also be enabled there; its default 10-second idle polling interval is configurable without recreating containers.
 
 Add `?profile=luftgewehr` to a single-stand URL to use that profile's appearance. Add `?obs=1` to hide operator controls or `?obs=2` to show only stand cards. With an existing query, use `&obs=2` instead.
 

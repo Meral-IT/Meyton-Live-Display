@@ -49,8 +49,14 @@ def lana_lanes(response, sequence):
 
 
 class LANAReader:
-    def __init__(self, stop, deliver, status):
-        self.stop, self.deliver, self.status = stop, deliver, status
+    def __init__(self, stop, deliver, status, policy=None):
+        self.stop, self.deliver, self.status, self.policy = stop, deliver, status, policy
+
+    def wait(self, seconds):
+        return self.policy.wait(seconds) if self.policy else self.stop.wait(seconds)
+
+    def interval(self, seconds):
+        return self.policy.interval(seconds) if self.policy else seconds
 
     def run(self):
         host = os.getenv("SM_LANA_HOST") or os.getenv("SM_DB_HOST")
@@ -72,7 +78,7 @@ class LANAReader:
                                 startlists = read_startlist_ids()
                             except Exception:
                                 pass  # Keep discovered IDs usable while SQL recovers.
-                            refresh_at = now + 5
+                            refresh_at = now + self.interval(5)
                         lanes, conflicts, confirmed = {}, set(), False
                         for startlist in startlists:
                             if self.stop.is_set():
@@ -95,10 +101,10 @@ class LANAReader:
                             self.status("lana", "connected", "Live-Belegung teilweise bestätigt" if conflicts else "Live-Belegung verbunden", heartbeat=True)
                         else:
                             self.status("lana", "degraded", "Belegung nicht bestätigt" if startlists else "Warte auf Starterlisten in SSMDB2", heartbeat=True)
-                        self.stop.wait(1)
+                        self.wait(1)
             except Exception as error:
                 self.status("lana", "disconnected", f"Belegung nicht erreichbar ({type(error).__name__})")
-                self.stop.wait(3)
+                self.wait(3)
 
 
 @contextmanager
@@ -211,8 +217,8 @@ def enrich_sdf(records):
 
 
 class SDFReader:
-    def __init__(self, stop, deliver, status):
-        self.stop, self.deliver, self.status = stop, deliver, status
+    def __init__(self, stop, deliver, status, policy=None):
+        self.stop, self.deliver, self.status, self.policy = stop, deliver, status, policy
         self.local_directory = os.getenv("SM_SDF_DIRECTORY", "")
         self.host = os.getenv("SM_SMB_HOST", "")
         self.port = int(os.getenv("SM_SMB_PORT", "445"))
@@ -226,6 +232,9 @@ class SDFReader:
         self.rescan = threading.Event()
         self.scan_error = None
         self.invalid = set()
+
+    def wait(self, seconds):
+        return self.policy.wait(seconds) if self.policy else self.stop.wait(seconds)
 
     def report(self, heartbeat=False):
         state = "degraded" if self.invalid else "connected"
@@ -333,8 +342,13 @@ class SDFReader:
                 self.report(heartbeat=True)
             except Exception as error:
                 self.status("sdf", "disconnected", f"SDF-Verzeichnis nicht erreichbar ({type(error).__name__})")
-                self.stop.wait(2)
-            self.stop.wait(0.1)
+                self.wait(2)
+                continue
+            if self.pending:
+                due = min(item[0] for item in self.pending.values())
+                self.stop.wait(max(0, due - time.monotonic()))
+            else:
+                self.wait(0.1)
 
     def run(self):
         if self.local_directory:
@@ -400,4 +414,4 @@ class SDFReader:
                 if connection:
                     connection.disconnect(close=False)
                 smbclient.reset_connection_cache(connection_cache=self.cache)
-            self.stop.wait(2)
+            self.wait(2)

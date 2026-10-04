@@ -12,7 +12,7 @@ Three Compose services run two images:
 - `backend` serves the API and Server-Sent Events (SSE) from a read-only SQLite connection. It manages profiles and sponsor files but receives no Meyton credentials.
 - `frontend` serves static browser assets and proxies the API through Caddy. It alone publishes HTTP/HTTPS host ports.
 
-Results use `/results/results.sqlite3` on the shared `results` volume. Configuration uses the `profiles` volume. Caddy persists its internal CA in `caddy_data` and runtime configuration in `caddy_config`. The uploaded logo is stored at `/data/logo.json` on the existing `profiles` volume. Run exactly one worker and one Uvicorn backend process. Multiple viewers share the backend database watcher and SSE cache. There is no separate database server, ORM, broker, historical browsing UI, or write access to Meyton.
+Results use `/results/results.sqlite3` on the shared `results` volume. Configuration uses the `profiles` volume. Global resource-saver settings and expiring viewer presence are stored as separate JSON files on that volume; the worker mounts it read-only. Caddy persists its internal CA in `caddy_data` and runtime configuration in `caddy_config`. The uploaded logo is stored at `/data/logo.json` on the existing `profiles` volume. Run exactly one worker and one Uvicorn backend process. Multiple viewers share the backend database watcher and SSE cache. There is no separate database server, ORM, broker, historical browsing UI, or write access to Meyton.
 
 The backend image runs as UID 10001. Services enable `no-new-privileges`. DB and SMB accounts must have read access only; the application uses SQL read-only transactions and does not create or modify vendor files. Public HTTP/HTTPS displays are unauthenticated. Administrative requests use Basic authentication through HTTPS; cross-origin browser mutations are rejected.
 
@@ -41,7 +41,7 @@ Copy [`.env.example`](../.env.example) for a new installation. Compose injects s
 | `HTTP_PORT`, `HTTPS_PORT` | `80`, `443` | Frontend host ports. |
 | `IMAGE_TAG` | `latest` | Shared GHCR tag for both images; `dev` or an explicit release version also works. |
 
-`RESULT_DB_PATH` and `PROFILE_PATH` are internal container paths set in Compose. The worker uses `/results/results.sqlite3`; the backend uses that database and `/data/profiles.json`. The demo override sets the worker's profile path to `/profiles/profiles.json` and mounts the same configuration volume read-only.
+`RESULT_DB_PATH`, `PROFILE_PATH`, `SETTINGS_PATH`, `VIEWER_PRESENCE_PATH`, and `RESOURCE_SAVER_STATUS_PATH` are internal container paths set in Compose. The worker uses `/results/results.sqlite3`, reads `/data/settings.json` and `/data/viewers.json`, and publishes best-effort mode status under `/results`. The backend opens the result database read-only and owns the two `/data` control files. The demo override sets the worker's profile path to `/profiles/profiles.json`; demo playback ignores resource-saver settings.
 
 `SM_LANA_STARTLIST_ID` is obsolete and ignored. Start-list IDs are discovered automatically.
 
@@ -67,6 +67,8 @@ These are defaults for new profile storage; existing saved profiles are not repl
 
 The editor supports creating, duplicating, saving, deleting, and previewing profiles. Each row contains comma-separated range numbers. Configure colors, visible fields, practice visibility, current-series/all-hit selection, and automatic/full-target zoom. “Disziplin hinter Standnummer anzeigen” places the visible discipline beside the Stand label; leave it unchecked for a separate line. The Disziplin visibility checkbox controls both placements. Saves update connected viewers without a restart. At least one profile must remain.
 
+The global **Ressourcenschonmodus** is disabled by default. Its editor card enables it and sets a slow polling interval from 2 to 300 seconds (default 10). Changes are atomic and take effect without restarting a container. Runtime state lists the active trigger and current SSE viewer count.
+
 Upload and remove sponsor images and edit their optional text (up to 300 characters) in the editor’s **Sponsorenbilder** section. Images are shared across all profiles: PNG, JPEG and SVG, up to 5 MiB each and 64 images total. Empty cards show their empty-range message and a random image, fitted without cropping. Each range keeps its selection while empty so live updates do not flicker; an active target always takes precedence. Without images, the existing empty-card display is used. Uploads, removals, and text changes update connected viewers immediately. SVGs cannot contain scripts, event handlers, foreign HTML, DTDs, entities or external image references; image responses use a restricted content policy.
 
 Confirmed free ranges show an empty slot instead of their archived target. Occupied ranges wait for an export matching the live shooter. Ranges without confirmed occupancy retain their latest stored results until live occupancy is confirmed. An empty range retains its place. Practice and scored positions remain separate; practice hits do not add to scored totals. Totals use vendor values, not locally recalculated scores. Unsupported/custom disciplines retain their results but show no target geometry.
@@ -76,6 +78,8 @@ Supported standard target mappings use documented Meyton discipline IDs for LG/L
 ## Sources and commissioning
 
 The worker collects all discovered ranges independently of profiles or viewers, reconciles current results once per second, and discovers new targets through incremental metadata queries. Retained historical targets are reconciled in batches of up to 50 every ten seconds. One shared SMB reader subscribes to recursive change notifications on `xml_result`. Existing files are indexed without replaying archives. A background metadata rescan every 30 seconds repairs missed notifications; reconnects also rescan. Partial XML writes are retried without discarding valid results. With `SM_SDF_DIRECTORY`, the same reader instead scans the local directory recursively every 100 ms, using modification time and size to detect new or changed XML files. Existing files are indexed without replaying archives, and partial writes use the same retries. Scan time adds to detection latency for large directories; validate it with the actual export archive. Missing or unreadable directories report a disconnected source and are retried. No SMB connection is made in local mode.
+
+When resource saving is enabled, any one of these conditions activates it: no meaningful result/shooter/occupancy change for 30 minutes, every configured live source continuously disconnected for 20 minutes, or no SSE display viewer for five minutes. Disabled sources and degraded-but-reachable sources do not establish a complete outage. SQL reconciliation, LANA polling/discovery, local SDF scans, and failed-source reconnects then use the configured slow interval. SMB change notifications remain armed, its 30-second repair scan is unchanged, and partial-file retries stay prompt. A source event, meaningful stand change, settings edit, or newly connected viewer wakes waiting loops; stand activity returns them to normal speed. Polling-only activity may take up to the configured interval to appear.
 
 The parser requires SDF 0.2.2 (`ResultList Version="0.2.2"`); the originally inspected server exposes its schemas through `xml_schemata`. [Meyton documents SDF](https://software.meyton.info/wp-content/uploads/Upload/Manuals/DE/Schnittstellen/Schnittstelle_-_Shooting_Data_Feed.pdf) as a live result export enabled in the Kontrollzentrum. Enable it before shooting. Confirm export notifications during practice, scoring, target replacement, and position changes.
 
@@ -129,7 +133,7 @@ There is **no historical backfill**. The first successful SSMDB2 connection reco
 
 Set `SM_RETENTION_DAYS=7` in `.env` to retain whole targets for seven days after their last shot. Any positive integer is accepted; recreate the worker after changing it with `docker compose up -d --no-build worker`. Targets without shots use the vendor target timestamp. Polling and corrections do not refresh last-shot retention. Cleanup runs every minute using an expiry index; minimal identity/shot watermarks remain to prevent expired archives from returning. Shortening retention removes expired results; increasing it does not backfill deleted sessions. Retention deletes rows and reuses database pages; it does not shrink the file on every cleanup.
 
-Target changes, range selection, occupancy, and cleared-target markers commit atomically. Duplicate updates cause no result writes. Replacing or clearing a range does not delete its retained session. Sessions are stored as complete normalized snapshots, not an update journal. Scores and hit positions are filtered by the existing vendor concealment rules before public responses.
+Target changes, range selection, occupancy, cleared-target markers, and the last meaningful stand-change timestamp commit atomically. Duplicate updates and source-health checks do not advance that timestamp. Existing version-1 databases migrate automatically and receive a fresh timestamp so an upgrade cannot immediately enter resource-saver mode. Replacing or clearing a range does not delete its retained session. Sessions are stored as complete normalized snapshots, not an update journal. Scores and hit positions are filtered by the existing vendor concealment rules before public responses.
 
 One backend thread checks the committed revision every 50 ms and refreshes only current range state when results or metadata change. Every viewer uses the resulting cache. Worker heartbeats commit every five seconds; fifteen seconds without progress marks the worker degraded. HTTP health reports process health and source status separately. Compose starts the backend after the worker has initialized the local database, even if vendor sources are unavailable.
 
@@ -143,7 +147,7 @@ The SSE endpoint sends a full `snapshot` on connection and reconnection, then on
 
 Every snapshot also includes `runtime_id`, generated once at backend startup. Displays reload the full page when a subsequent snapshot has a different ID, including after SSE reconnects. The editor checks the same ID through its existing preview refresh. Initial IDs and ordinary updates do not reload pages. HTML, JavaScript, and CSS responses require cache revalidation so reloads pick up deployed assets. Backend restarts also trigger reloads; frontend-only deployments need a backend restart to change the ID.
 
-Protected: `GET/PUT/DELETE /api/admin/logo`, `GET/POST /api/admin/sponsors`, `PUT/DELETE /api/admin/sponsors/{image_id}`, `GET /api/admin/auth`, `GET/POST /api/admin/profiles`, `POST /api/admin/profiles/preview`, and `PUT/DELETE /api/admin/profiles/{id}`. Draft previews are validated and use live range state without saving. Writes require Basic authentication and JSON; cross-origin browser mutations are rejected. Profile IDs remain stable on edits.
+Protected: `GET/PUT/DELETE /api/admin/logo`, `GET/POST /api/admin/sponsors`, `PUT/DELETE /api/admin/sponsors/{image_id}`, `GET /api/admin/auth`, `GET/PUT /api/admin/settings/resource-saver`, `GET/POST /api/admin/profiles`, `POST /api/admin/profiles/preview`, and `PUT/DELETE /api/admin/profiles/{id}`. The resource-saver response contains saved settings plus best-effort worker runtime status; it is not added to public snapshots. Draft previews are validated and use live range state without saving. Writes require Basic authentication and JSON; cross-origin browser mutations are rejected. Profile IDs remain stable on edits.
 
 Backend storage: `/data/profiles.json` on the `profiles` Docker volume. Saves use a temporary file, fsync, and atomic replacement. Invalid existing storage fails startup instead of silently overwriting profiles.
 
@@ -180,7 +184,7 @@ To restore, stop `worker` and `backend` first. Preserve the existing results vol
 
 ### Profiles and sponsor files
 
-Stop the backend briefly to avoid edits during the configuration backup:
+Stop the backend briefly to avoid edits during the configuration backup. The profiles volume also contains global resource-saver settings and viewer-presence state; only settings are durable configuration, while presence is safely regenerated:
 
 ```sh
 mkdir -p .data/backups

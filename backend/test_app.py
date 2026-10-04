@@ -463,11 +463,19 @@ class ProfileAndAPIChecks(unittest.TestCase):
             with TestClient(app) as client:
                 self.assertEqual(client.get("/healthz").status_code, 200)
                 self.assertEqual(client.get("/api/admin/auth").status_code, 401)
+                self.assertEqual(client.get("/api/admin/settings/resource-saver").status_code, 401)
                 self.assertEqual(client.get("/api/admin/profiles").status_code, 401)
                 profiles = client.get("/api/profiles").json()
                 profile = {**profiles[0], "id": "test", "name": "Test"}
                 self.assertEqual(client.post("/api/admin/profiles", json=profile).status_code, 401)
                 auth = ("admin", "test-password")
+                resource = client.get("/api/admin/settings/resource-saver", auth=auth).json()
+                self.assertEqual(resource["settings"], {"enabled": False, "poll_interval_seconds": 10})
+                saved_resource = client.put("/api/admin/settings/resource-saver", auth=auth,
+                    json={"enabled": True, "poll_interval_seconds": 15}).json()
+                self.assertEqual(saved_resource["settings"], {"enabled": True, "poll_interval_seconds": 15})
+                self.assertEqual(client.put("/api/admin/settings/resource-saver", auth=auth,
+                    json={"enabled": True, "poll_interval_seconds": 1}).status_code, 422)
                 self.assertEqual(client.post("/api/admin/profiles", json=profile, auth=auth).status_code, 201)
                 self.assertEqual(client.post("/api/admin/profiles", json=profile, auth=auth).status_code, 409)
                 self.assertEqual(client.put("/api/admin/profiles/test", json=profile, auth=auth, headers={"Origin": "https://other.invalid"}).status_code, 403)
