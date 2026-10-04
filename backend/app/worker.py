@@ -8,7 +8,9 @@ import queue
 import signal
 import threading
 import time
+from pathlib import Path
 
+from .resource_saver import ResourceSaverPolicy
 from .storage import ResultStore, connect_reader
 
 
@@ -20,6 +22,16 @@ class Worker:
         self.sdf_enabled = sdf_enabled == "true"
         self.store = ResultStore(path)
         self.stop = threading.Event()
+        shared = Path(path).parent
+        self.resource_saver = ResourceSaverPolicy(
+            self.stop,
+            os.getenv("SETTINGS_PATH", "/data/settings.json"),
+            os.getenv("VIEWER_PRESENCE_PATH", "/data/viewers.json"),
+            os.getenv("RESOURCE_SAVER_STATUS_PATH", str(shared / "resource-saver-status.json")),
+            self.store.stand_changed_at,
+        )
+        for source in ("db", "sdf", "lana"):
+            self.resource_saver.source_status(source, "starting")
         self.ready = threading.Event()
         if self.store.started_at is not None:
             self.ready.set()
@@ -43,6 +55,7 @@ class Worker:
         return False
 
     def status(self, source, state, message, **kwargs):
+        self.resource_saver.source_status(source, state)
         now = time.monotonic()
         with self.status_lock:
             previous = self.status_seen.get(source)
@@ -118,7 +131,7 @@ class Worker:
             except Exception as error:
                 since = None  # Re-discover targets missed during a failed read or disconnect.
                 self.status("db", "disconnected", f"DB nicht erreichbar ({type(error).__name__})")
-            self.stop.wait(max(0, 1 - (time.monotonic() - started)))
+            self.resource_saver.wait(max(0, 1 - (time.monotonic() - started)))
 
     def after_baseline(self, run):
         while not self.stop.is_set():
@@ -132,13 +145,15 @@ class Worker:
         self.store.cleanup()
         self.store.start_sources(("db", "sdf", "lana"))
         self.store.heartbeat()
-        lana = LANAReader(self.stop, lambda lanes: self.enqueue("occupancy", lanes), self.status)
+        self.resource_saver.start()
+        lana = LANAReader(self.stop, lambda lanes: self.enqueue("occupancy", lanes), self.status, self.resource_saver)
         sources = [self.poll, lambda: self.after_baseline(lana.run)]
         if self.sdf_enabled:
-            sdf = SDFReader(self.stop, lambda targets: self.enqueue("targets", targets), self.status)
+            sdf = SDFReader(self.stop, lambda targets: self.enqueue("targets", targets), self.status, self.resource_saver)
             sources.append(lambda: self.after_baseline(sdf.run))
         else:
             self.store.source_status("sdf", "disabled", "SDF deaktiviert (SM_SDF_ENABLED=false)")
+            self.resource_saver.source_status("sdf", "disabled")
         threads = [threading.Thread(target=run, daemon=True) for run in sources]
         for thread in threads:
             thread.start()
@@ -148,9 +163,11 @@ class Worker:
                 try:
                     kind, data = self.queue.get(timeout=0.1)
                     if kind == "targets":
-                        self.store.ingest(data)
+                        if self.store.ingest(data):
+                            self.resource_saver.record_activity(self.store.stand_changed_at)
                     elif kind == "occupancy":
-                        self.store.occupancy(data)
+                        if self.store.occupancy(data):
+                            self.resource_saver.record_activity(self.store.stand_changed_at)
                     elif kind == "status":
                         self.store.source_status(*data)
                     elif kind == "index":
@@ -167,6 +184,7 @@ class Worker:
                     cleanup_due = now + 60
         finally:
             self.stop.set()
+            self.resource_saver.close()
             for thread in threads:
                 thread.join(timeout=2)
             self.store.close()

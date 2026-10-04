@@ -34,6 +34,16 @@
     <section class="profile-preview" aria-labelledby="preview-heading"><div class="section-heading"><h2 id="preview-heading">Vorschau</h2><a id="open-display" target="_blank" rel="noopener">Anzeige öffnen</a></div><div class="preview-frame"><iframe id="preview" title="Vorschau des Anzeigeprofils"></iframe></div><p>Vorschau mit 1920 × 1080. Änderungen erscheinen ohne Speichern; neue Stände werden nach dem Speichern eingelesen.</p><div class="stream-link"><label for="obs-url">OBS-Browserquelle</label><div class="obs-url-controls"><input id="obs-url" readonly><button type="button" id="copy-url" class="secondary">URL kopieren</button></div><p>Browserquelle: 1920 × 1080.</p>
         <section class="certificate-download" aria-label="HTTPS-Zertifikat"><a class="button secondary" href="/meyton-root.crt" download="meyton-root.crt">CA-Zertifikat herunterladen</a><p>Für HTTPS muss die lokale Zertifizierungsstelle auf dem OBS-Rechner vertraut sein.</p></section>
       </div>
+      <section class="stream-link resource-saver-settings" aria-labelledby="resource-saver-heading">
+        <h2 id="resource-saver-heading">Ressourcenschonmodus</h2>
+        <p class="form-note">Reduziert Zugriffe auf ShootMaster bei 30 Minuten ohne Standänderung, 20 Minuten vollständigem Quellenausfall oder 5 Minuten ohne verbundene Anzeige.</p>
+        <form id="resource-saver-form">
+          <label class="checkbox"><input id="resource-saver-enabled" type="checkbox">Ressourcenschonmodus aktivieren</label>
+          <label>Langsames Abfrageintervall<input id="resource-saver-interval" type="number" min="2" max="300" step="1" required><small>2 bis 300 Sekunden · Standard: 10 Sekunden.</small></label>
+          <button id="save-resource-saver" type="submit">Einstellung speichern</button>
+        </form>
+        <p id="resource-saver-status" role="status" aria-live="polite"></p>
+      </section>
       <section class="stream-link logo-settings" aria-labelledby="logo-heading">
         <h2 id="logo-heading">Eigenes Logo</h2>
         <p class="form-note">Für alle Anzeigen und die Verwaltung. Ohne eigenes Logo erscheint der bisherige Titel.</p>

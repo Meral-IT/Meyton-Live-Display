@@ -42,8 +42,9 @@ def main():
                     if path == "/admin":
                         assert page.locator(".profile-preview .logo-settings").count() == 1
                         assert page.locator(".profile-preview .sponsor-settings").count() == 1
+                        assert page.locator(".profile-preview .resource-saver-settings").count() == 1
                         assert page.locator("#obs-url").evaluate("node => node.closest('.stream-link').querySelector('.certificate-download a[download]') !== null")
-                        for control in ("#upload-logo", "#delete-logo", "#sponsor-files", "#upload-sponsors", ".certificate-download a"):
+                        for control in ("#save-resource-saver", "#upload-logo", "#delete-logo", "#sponsor-files", "#upload-sponsors", ".certificate-download a"):
                             assert page.locator(control).evaluate("""node => {
                                 const bounds = node.getBoundingClientRect();
                                 const card = node.closest('.stream-link').getBoundingClientRect();

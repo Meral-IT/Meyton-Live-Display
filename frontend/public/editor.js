@@ -220,6 +220,46 @@ byId("discipline-form").addEventListener("submit", async event => {
   finally { byId("save-disciplines").disabled = false; }
 });
 
+const resourceReasonLabels = {
+  inactivity: "30 Minuten ohne Standänderung",
+  outage: "ShootMaster-Quellen seit 20 Minuten nicht erreichbar",
+  no_viewers: "5 Minuten ohne verbundene Anzeige",
+};
+
+function showResourceSaver(data, updateInputs = true) {
+  if (updateInputs) {
+    byId("resource-saver-enabled").checked = data.settings.enabled;
+    byId("resource-saver-interval").value = data.settings.poll_interval_seconds;
+  }
+  const status = data.status;
+  if (!status) {
+    byId("resource-saver-status").textContent = "Workerstatus noch nicht verfügbar";
+    return;
+  }
+  const state = !data.settings.enabled ? "Deaktiviert" : status.active ? "Aktiv" : "Bereit · normale Abfragerate";
+  const reasons = status.reasons?.length ? `\nGrund: ${status.reasons.map(reason => resourceReasonLabels[reason] || reason).join(", ")}` : "";
+  byId("resource-saver-status").textContent = `${state} · ${status.viewer_count} verbundene Anzeige${status.viewer_count === 1 ? "" : "n"}${reasons}`;
+}
+
+async function loadResourceSaver(updateInputs = true) {
+  const data = await api("", {}, "/api/admin/settings/resource-saver");
+  showResourceSaver(data, updateInputs);
+}
+
+byId("resource-saver-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  byId("save-resource-saver").disabled = true;
+  try {
+    const data = await api("", {method: "PUT", body: JSON.stringify({
+      enabled: byId("resource-saver-enabled").checked,
+      poll_interval_seconds: byId("resource-saver-interval").valueAsNumber,
+    })}, "/api/admin/settings/resource-saver");
+    showResourceSaver(data);
+    byId("resource-saver-status").textContent += "\nGespeichert · wird ohne Neustart übernommen";
+  } catch (error) { byId("resource-saver-status").textContent = error.message; }
+  finally { byId("save-resource-saver").disabled = false; }
+});
+
 byId("logo-form").addEventListener("submit", async event => {
   event.preventDefault();
   byId("upload-logo").disabled = true;
@@ -326,4 +366,6 @@ try {
   await loadSponsors();
   await loadLogo();
   await loadDisciplines();
+  await loadResourceSaver();
+  setInterval(() => loadResourceSaver(false).catch(error => { byId("resource-saver-status").textContent = error.message; }), 5000);
 } catch (error) { message(error.message, true); }

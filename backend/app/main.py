@@ -7,6 +7,7 @@ import os
 import secrets
 import threading
 import time
+from pathlib import Path as FilePath
 from typing import Annotated
 from contextlib import asynccontextmanager
 
@@ -18,6 +19,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from .disciplines import DisciplineMappings, DisciplineStore, public_catalog
 from .domain import RangeState, iso
 from .profiles import Profile, ProfileStore
+from .resource_saver import (PRESENCE_HEARTBEAT_SECONDS, ResourceSaverSettings,
+                             ResourceSaverStore, atomic_json, read_json)
 from .sponsors import IMAGE_POLICY, MAX_REQUEST_BYTES, TYPES, LogoStore, SponsorStore
 from .storage import connect_reader, read_snapshot
 
@@ -28,20 +31,51 @@ class SponsorText(BaseModel):
 
 
 class Runtime:
-    def __init__(self, path):
+    def __init__(self, path, result_path=None):
         self.id = secrets.token_hex(16)
         self.profiles = ProfileStore(path)
         self.disciplines = DisciplineStore(self.profiles.path.parent / "disciplines.json")
+        data_directory = self.profiles.path.parent
+        result_directory = FilePath(result_path).parent if result_path else data_directory
+        self.resource_saver = ResourceSaverStore(os.getenv("SETTINGS_PATH", str(data_directory / "settings.json")))
+        self.viewer_presence_path = FilePath(os.getenv("VIEWER_PRESENCE_PATH", str(data_directory / "viewers.json")))
+        self.resource_saver_status_path = FilePath(os.getenv(
+            "RESOURCE_SAVER_STATUS_PATH", str(result_directory / "resource-saver-status.json")))
         self.sponsors = SponsorStore(self.profiles.path.parent / "sponsors")
         self.logo = LogoStore(self.profiles.path.parent / "logo.json")
         self.ranges = RangeState()
         self.status = {source: {"state": "starting", "message": "Verbindung wird hergestellt", "last_check_at": None}
                        for source in ("db", "sdf", "lana")}
         self.listeners = set()
+        self.last_viewer_seen_at = time.time()
+        self._published_viewer_count = 0
         self.stop = threading.Event()
         self.revision = 0
         self.status["worker"] = {"state": "starting", "message": "Warte auf Ergebnis-Worker", "last_check_at": None}
         self.status["local_db"] = {"state": "starting", "message": "Lokale Datenbank wird geöffnet", "last_check_at": None}
+
+    def write_viewer_presence(self, viewer_count=None):
+        count = len(self.listeners) if viewer_count is None else viewer_count
+        now = time.time()
+        if count > 0 or self._published_viewer_count > 0:
+            self.last_viewer_seen_at = now
+        self._published_viewer_count = count
+        try:
+            atomic_json(self.viewer_presence_path, {
+                "runtime_id": self.id,
+                "viewer_count": count,
+                "last_viewer_seen_at": self.last_viewer_seen_at,
+                "updated_at": now,
+            })
+        except OSError:
+            pass  # Presence reporting must not interrupt a display stream.
+
+    def resource_saver_response(self):
+        try:
+            status = read_json(self.resource_saver_status_path)
+        except (OSError, ValueError, json.JSONDecodeError):
+            status = None
+        return {"settings": self.resource_saver.settings.model_dump(), "status": status}
 
     def notify(self):
         self.revision += 1
@@ -85,10 +119,10 @@ class Runtime:
 def create_app(profile_path=None, *, result_path=None):
     @asynccontextmanager
     async def lifespan(app):
-        runtime = Runtime(profile_path or os.getenv("PROFILE_PATH", "/data/profiles.json"))
+        path = result_path or os.getenv("RESULT_DB_PATH", "/results/results.sqlite3")
+        runtime = Runtime(profile_path or os.getenv("PROFILE_PATH", "/data/profiles.json"), path)
         app.state.runtime = runtime
         loop = asyncio.get_running_loop()
-        path = result_path or os.getenv("RESULT_DB_PATH", "/results/results.sqlite3")
         # One watcher for all viewers; the cache contains only committed SQLite state.
         def watch():
             connection = None
@@ -128,10 +162,21 @@ def create_app(profile_path=None, *, result_path=None):
             runtime.local_failure()
         thread = threading.Thread(target=watch, daemon=True)
         thread.start()
+        async def presence_heartbeat():
+            while True:
+                runtime.write_viewer_presence()
+                await asyncio.sleep(PRESENCE_HEARTBEAT_SECONDS)
+        presence_task = asyncio.create_task(presence_heartbeat())
         try:
             yield
         finally:
             runtime.stop.set()
+            presence_task.cancel()
+            try:
+                await presence_task
+            except asyncio.CancelledError:
+                pass
+            runtime.write_viewer_presence(0)
             await asyncio.to_thread(thread.join, 2)
 
     app = FastAPI(title="Meyton Live Display", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
@@ -181,6 +226,7 @@ def create_app(profile_path=None, *, result_path=None):
         async def stream():
             listener = asyncio.Event()
             runtime.listeners.add(listener)
+            runtime.write_viewer_presence()
             previous = None
             loop = asyncio.get_running_loop()
             heartbeat_at = loop.time() + 10
@@ -209,11 +255,22 @@ def create_app(profile_path=None, *, result_path=None):
                         yield ": heartbeat\n\n"
             finally:
                 runtime.listeners.discard(listener)
+                runtime.write_viewer_presence()
         return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
     @app.get("/api/admin/auth", dependencies=[Depends(admin)])
     def authenticate():
         return Response(status_code=204)
+
+    @app.get("/api/admin/settings/resource-saver", dependencies=[Depends(admin)])
+    def resource_saver_settings(request: Request):
+        return request.app.state.runtime.resource_saver_response()
+
+    @app.put("/api/admin/settings/resource-saver", dependencies=[Depends(admin)])
+    async def update_resource_saver(settings: ResourceSaverSettings, request: Request):
+        runtime = request.app.state.runtime
+        await asyncio.to_thread(runtime.resource_saver.save, settings)
+        return runtime.resource_saver_response()
 
     @app.get("/api/logo")
     def logo_image(request: Request):

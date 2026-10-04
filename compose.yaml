@@ -25,6 +25,9 @@ services:
       SM_LANA_PORT: ${SM_LANA_PORT:-53088}
       SM_RETENTION_DAYS: ${SM_RETENTION_DAYS:-7}
       RESULT_DB_PATH: /results/results.sqlite3
+      SETTINGS_PATH: /data/settings.json
+      VIEWER_PRESENCE_PATH: /data/viewers.json
+      RESOURCE_SAVER_STATUS_PATH: /results/resource-saver-status.json
     command: ["python", "-m", "app.worker"]
     healthcheck:
       test: ["CMD", "python", "-m", "app.worker", "--healthcheck"]
@@ -34,6 +37,7 @@ services:
       retries: 3
     volumes:
       - results:/results
+      - profiles:/data:ro
       # Read-only ShootMaster export directory; replaces SMB access when enabled above.
       # - type: bind
       #   source: ${SM_SDF_DIRECTORY:?Set SM_SDF_DIRECTORY to the host export directory in .env}
@@ -53,6 +57,9 @@ services:
       SM_ADMIN_PASSWORD: ${SM_ADMIN_PASSWORD:?Set a unique SM_ADMIN_PASSWORD in .env}
       PROFILE_PATH: /data/profiles.json
       RESULT_DB_PATH: /results/results.sqlite3
+      SETTINGS_PATH: /data/settings.json
+      VIEWER_PRESENCE_PATH: /data/viewers.json
+      RESOURCE_SAVER_STATUS_PATH: /results/resource-saver-status.json
     volumes:
       - profiles:/data
       - results:/results
