@@ -15,7 +15,7 @@ TARGET_RULES = {"10": "lg","10100": "lg", "10110": "lg", "10111": "lg", "10210":
                "40110": "kk", "40140": "kk", "40141": "kk", "40180": "kk",
                "41209": "kk", "41211": "kk", "41212": "kk"}
 # Local copies use short IDs. Match verified names, not weapon prefixes.
-STANDARD_TARGET_NAMES = {"LG Auflage 30": "lg", "LP 40": "lp",
+STANDARD_TARGET_NAMES = {"LG Auflage 30": "lg", "LG 20": "lg", "LP 40": "lp",
                          "LG 5P 10W": "lg",
                          "LG Schach 10x10": "schach10", "LG Schach 10x10 5W": "schach10",
                          "LG Schach 5W": "schach10"}
