@@ -1,10 +1,12 @@
 """Demo simulation follows configured ranges and the real SQLite/display path."""
 
 import json
+import math
 import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -99,6 +101,23 @@ class DemoChecks(unittest.TestCase):
             for interval in (0, -1, float("nan"), float("inf")):
                 with self.assertRaises(ValueError):
                     DemoWorker(path, profiles, interval=interval)
+
+    def test_demo_can_generate_misses_and_10_9(self):
+        with tempfile.TemporaryDirectory() as directory:
+            worker = DemoWorker(Path(directory) / "results.sqlite3",
+                                Path(directory) / "missing-profiles.json")
+            try:
+                worker.new_session(1, "0111", 0)
+                session = worker.sessions[1]
+                with patch.object(worker.random, "randrange", side_effect=[0, 10, 9]):
+                    worker.shot(session, 1)
+                    worker.shot(session, 2)
+                miss, perfect = session["target"]["shots"].values()
+                self.assertEqual(miss["score"]["value"], 0)
+                self.assertGreater(math.hypot(miss["x_mm"], miss["y_mm"]), 27.5)
+                self.assertEqual(perfect["score"]["value"], 109)
+            finally:
+                worker.store.close()
 
 
 if __name__ == "__main__":

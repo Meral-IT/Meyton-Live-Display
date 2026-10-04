@@ -15,8 +15,8 @@ from .storage import ResultStore
 NAMES = ("Becker, Anna", "Berg, Leon", "Fischer, Emma", "Klein, Paul", "Koch, Mia",
          "Lang, Felix", "Meyer, Lena", "Neumann, Jonas", "Weber, Clara", "Wolf, Ben")
 # Match the verified SVG geometry; these scores belong only to synthetic results.
-TARGETS = {"0111": ("LG Auflage 30", 10111030, 30, 2.5, 2.5, 0.8),
-           "1211": ("KK 5P+10W", 41211010, 10, 8.0, 8.0, 3.2)}
+TARGETS = {"0111": ("LG Auflage 30", 10111030, 30, 2.5, 2.5),
+           "1211": ("KK 5P+10W", 41211010, 10, 8.0, 8.0)}
 
 
 class DemoWorker:
@@ -39,16 +39,14 @@ class DemoWorker:
 
     def new_session(self, lane, kind, now):
         name = self.random.choice(NAMES) + " (Demo)"
-        discipline, discipline_id, limit, _, _, spread = TARGETS[kind]
+        discipline, discipline_id, limit, _, _ = TARGETS[kind]
         target = {"id": self.next_id, "lane": lane, "shooter": name,
                   "discipline": discipline, "discipline_id": discipline_id, "modified": now,
                   "shots": {}, "series": {}, "total": score(0), "decimal_total": score(0, "ZehntelRing"),
                   "source": "demo", "full": True}
         self.next_id -= 1
         self.sessions[lane] = {"target": target, "kind": kind, "limit": limit, "count": 0,
-                               "phase": "shooting", "due": now,
-                               "spread": spread * self.random.uniform(0.8, 1.6),
-                               "offset": (self.random.gauss(0, spread / 3), self.random.gauss(0, spread / 3))}
+                               "phase": "shooting", "due": now}
         self.occupancies[lane] = {"state": "occupied", "shooter": name}
 
     def profiles(self, now):
@@ -72,13 +70,18 @@ class DemoWorker:
         session["count"] += 1
         count = session["count"]
         position, number = (0, count) if count <= 5 else (1, count - 5)
-        spread = session["spread"] * (1.4 if position == 0 else 1)
-        x, y = (round(self.random.gauss(offset, spread), 2) for offset in session["offset"])
-        radius = math.hypot(x, y)
-        _, _, _, ten_radius, ring_width, _ = TARGETS[session["kind"]]
-        whole = max(0, min(10, 10 - math.ceil((radius - ten_radius) / ring_width)))
-        outer = ten_radius + (10 - whole) * ring_width
-        decimal = whole * 10 + max(0, min(9, int((outer - radius) / (ring_width / 10)))) if whole else 0
+        _, _, _, ten_radius, ring_width = TARGETS[session["kind"]]
+        whole = self.random.randrange(11)
+        if whole:
+            tenth = self.random.randrange(10)
+            decimal = whole * 10 + tenth
+            outer = ten_radius + (10 - whole) * ring_width
+            radius = outer - self.random.uniform(tenth, tenth + 1) * ring_width / 10
+        else:
+            decimal = 0
+            radius = ten_radius + self.random.uniform(10.1, 12) * ring_width
+        angle = self.random.uniform(0, math.tau)
+        x, y = round(radius * math.cos(angle), 2), round(radius * math.sin(angle), 2)
         target = session["target"]
         target["shots"][(position, number)] = {
             "position": position, "number": number, "series": (number - 1) // 10 + 1,
