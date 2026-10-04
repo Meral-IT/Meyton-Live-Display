@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 from xml.etree import ElementTree as ET
 
 MAX_XML_BYTES = 2 * 1024 * 1024
-TARGET_RULES = {"10100": "lg", "10110": "lg", "10111": "lg", "10210": "lp",
+TARGET_RULES = {"10": "lg","10100": "lg", "10110": "lg", "10111": "lg", "10210": "lp",
                "11009": "lg", "11011": "lg", "11012": "lg",
                "18052": "schach10",
                "40110": "kk", "40140": "kk", "40141": "kk", "40180": "kk",
