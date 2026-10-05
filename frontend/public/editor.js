@@ -128,6 +128,7 @@ byId("profile-form").addEventListener("submit", async event => {
     const data = draft();
     const saved = await api(creating ? "" : `/${current.id}`, {method: creating ? "POST" : "PUT", body: JSON.stringify(data)});
     profiles = await api("");
+    publicationProfiles();
     select(saved);
     message("Gespeichert · Anzeigen aktualisiert");
   } catch (error) { message(error.message, true); }
@@ -140,6 +141,7 @@ byId("delete-profile").onclick = async () => {
   try {
     await api(`/${current.id}`, {method: "DELETE"});
     profiles = await api("");
+    publicationProfiles();
     select(profiles[0]);
     message("Profil gelöscht");
   } catch (error) { message(error.message, true); }
@@ -260,6 +262,83 @@ byId("resource-saver-form").addEventListener("submit", async event => {
   finally { byId("save-resource-saver").disabled = false; }
 });
 
+let publicationSelection = [];
+let publicationDeployBusy = false;
+function publicationProfiles() {
+  const selected = new Set(publicationSelection);
+  publicationSelection = profiles.filter(profile => selected.has(profile.id)).map(profile => profile.id);
+  byId("publication-profiles").replaceChildren(...profiles.map(profile => {
+    const option = document.createElement("option");
+    option.value = profile.id;
+    option.textContent = profile.name;
+    option.selected = selected.has(profile.id);
+    return option;
+  }));
+}
+byId("publication-profiles").addEventListener("change", () => {
+  publicationSelection = [...byId("publication-profiles").selectedOptions].map(option => option.value);
+});
+function showPublication(data, updateInputs = true) {
+  byId("deploy-publication").disabled = publicationDeployBusy || !data.settings.enabled;
+  if (updateInputs) {
+    const settings = data.settings;
+    for (const name of ["enabled", "names"]) byId(`publication-${name}`).checked = settings[name];
+    for (const name of ["host", "port", "user", "directory", "key_file", "known_hosts"]) {
+      byId(`publication-${name.replaceAll("_", "-")}`).value = settings[name];
+    }
+    byId("publication-interval").value = settings.interval_seconds;
+    publicationSelection = settings.profiles;
+    publicationProfiles();
+    byId("publication-password").value = "";
+    byId("publication-password").placeholder = settings.password_set ? "Passwort gespeichert" : "Kein Passwort gespeichert";
+    byId("publication-clear-password").checked = false;
+  }
+  const labels = {disabled: "Deaktiviert", connecting: "Verbindung wird hergestellt", connected: "Veröffentlichung aktiv", error: "Übertragung fehlgeschlagen · SFTP-Ziel, Zugangsdaten und Hostschlüssel prüfen"};
+  const status = data.status;
+  byId("publication-status").textContent = labels[status.state] || status.state;
+  if (status.state === "error" && status.message) byId("publication-status").textContent = status.message;
+  if (status.last_success_at) byId("publication-status").textContent += ` · Zuletzt bestätigt: ${new Date(status.last_success_at * 1000).toLocaleString("de-DE")}`;
+}
+async function loadPublicationSettings(updateInputs = true) {
+  showPublication(await api("", {}, "/api/admin/settings/publication"), updateInputs);
+}
+byId("deploy-publication").addEventListener("click", async () => {
+  publicationDeployBusy = true;
+  byId("deploy-publication").disabled = true;
+  byId("publication-deploy-status").textContent = "Webseite wird bereitgestellt …";
+  try {
+    const result = await api("", {method: "POST", body: "{}"}, "/api/admin/settings/publication/deploy");
+    byId("publication-deploy-status").textContent = result.changed_files
+      ? `Webseite bereitgestellt · ${result.changed_files} Dateien aktualisiert`
+      : "Webseite bereits aktuell";
+  } catch (error) { byId("publication-deploy-status").textContent = error.message; }
+  finally {
+    publicationDeployBusy = false;
+    await loadPublicationSettings(false).catch(() => {});
+  }
+});
+byId("publication-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  byId("save-publication").disabled = true;
+  try {
+    const settings = {
+      enabled: byId("publication-enabled").checked,
+      names: byId("publication-names").checked,
+      profiles: publicationSelection,
+      port: byId("publication-port").valueAsNumber,
+      interval_seconds: Number(byId("publication-interval").value),
+    };
+    for (const name of ["host", "user", "directory", "key_file", "known_hosts"]) {
+      settings[name] = byId(`publication-${name.replaceAll("_", "-")}`).value;
+    }
+    if (byId("publication-clear-password").checked) settings.password = "";
+    else if (byId("publication-password").value) settings.password = byId("publication-password").value;
+    showPublication(await api("", {method: "PUT", body: JSON.stringify(settings)}, "/api/admin/settings/publication"));
+    byId("publication-status").textContent += " · Gespeichert, ohne Neustart";
+  } catch (error) { byId("publication-status").textContent = error.message; }
+  finally { byId("save-publication").disabled = false; }
+});
+
 byId("logo-form").addEventListener("submit", async event => {
   event.preventDefault();
   byId("upload-logo").disabled = true;
@@ -367,5 +446,7 @@ try {
   await loadLogo();
   await loadDisciplines();
   await loadResourceSaver();
+  await loadPublicationSettings();
+  setInterval(() => loadPublicationSettings(false).catch(error => { byId("publication-status").textContent = error.message; }), 5000);
   setInterval(() => loadResourceSaver(false).catch(error => { byId("resource-saver-status").textContent = error.message; }), 5000);
 } catch (error) { message(error.message, true); }

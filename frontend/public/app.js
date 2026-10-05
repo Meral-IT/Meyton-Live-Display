@@ -1,6 +1,7 @@
 import {drawTarget, setTargetCatalog, TARGETS} from "/target.js";
 import {updateLogo} from "/branding.js";
 import {checkRuntime} from "/reload.js";
+import {publicDisplay, loadPublication, publicationCatalog, publicationProfiles, publicationSnapshot, publicationStatus} from "/publication.js";
 
 const number = new Intl.NumberFormat("de-DE", {maximumFractionDigits: 1});
 const decimal = new Intl.NumberFormat("de-DE", {minimumFractionDigits: 1, maximumFractionDigits: 1});
@@ -41,9 +42,11 @@ function tile(entry, profile, sponsors) {
   const discipline = state && profile.fields.includes("discipline") ? state.discipline || "Disziplin unbekannt" : null;
   const top = element("div", "tile-top");
   const heading = element("div", "range-heading");
-  const laneLink = element("a", "lane", `Stand ${entry.lane}`);
-  laneLink.href = `/range/${entry.lane}?profile=${encodeURIComponent(profile.id)}${obs ? `&obs=${obs}` : ""}`;
-  laneLink.title = "Einzelstand anzeigen";
+  const laneLink = element(publicDisplay ? "span" : "a", "lane", `Stand ${entry.lane}`);
+  if (!publicDisplay) {
+    laneLink.href = `/range/${entry.lane}?profile=${encodeURIComponent(profile.id)}${obs ? `&obs=${obs}` : ""}`;
+    laneLink.title = "Einzelstand anzeigen";
+  }
   heading.append(laneLink);
   if (discipline && profile.discipline_inline) {
     const label = element("span", "discipline inline", discipline);
@@ -207,9 +210,12 @@ function render(snapshot, liveUpdate = false) {
 }
 
 async function loadProfiles() {
-  const response = await fetch("/api/profiles", {cache: "no-store"});
-  if (!response.ok) throw new Error("Profile konnten nicht geladen werden");
-  profiles = await response.json();
+  if (publicDisplay) profiles = publicationProfiles();
+  else {
+    const response = await fetch("/api/profiles", {cache: "no-store"});
+    if (!response.ok) throw new Error("Profile konnten nicht geladen werden");
+    profiles = await response.json();
+  }
   const select = document.getElementById("profiles");
   select.replaceChildren(...profiles.map(profile => {
     const option = element("option", "", profile.name);
@@ -220,14 +226,50 @@ async function loadProfiles() {
 }
 
 async function loadTargetCatalog() {
-  const response = await fetch("/api/target-rules", {cache: "no-store"});
-  if (!response.ok) throw new Error("Regelkatalog konnte nicht geladen werden");
-  const catalog = await response.json();
+  let catalog;
+  if (publicDisplay) catalog = publicationCatalog();
+  else {
+    const response = await fetch("/api/target-rules", {cache: "no-store"});
+    if (!response.ok) throw new Error("Regelkatalog konnte nicht geladen werden");
+    catalog = await response.json();
+  }
   setTargetCatalog(catalog);
   ruleCatalogRevision = catalog.revision;
 }
 
+async function connectPublic(id) {
+  let first = true;
+  async function poll() {
+    try {
+      await loadPublication();
+      await loadTargetCatalog();
+      await loadProfiles();
+      const snapshot = publicationSnapshot(id, range);
+      if (!snapshot) {
+        document.getElementById("ranges").replaceChildren();
+        if (profiles.length && !profiles.some(profile => profile.id === id)) {
+          location.assign(displayUrl(profiles[0].id));
+          return;
+        }
+        throw new Error("Profil oder Stand nicht veröffentlicht");
+      }
+      document.getElementById("profiles").value = id;
+      if (publicationStatus()) render(snapshot, !first);
+      first = false;
+      publicationStatus();
+    } catch (error) {
+      const status = document.getElementById("connection");
+      status.className = "degraded";
+      status.textContent = error.message;
+      publicationStatus();
+    }
+    setTimeout(poll, 2000);
+  }
+  poll();
+}
+
 async function connect(id) {
+  if (publicDisplay) return connectPublic(id);
   if (stream) stream.close();
   document.getElementById("profiles").value = id;
   const response = await fetch(`${range === null ? "/api/snapshot" : `/api/ranges/${range}`}?profile=${encodeURIComponent(id)}`, {cache: "no-store"});
@@ -270,11 +312,17 @@ if (preview) window.addEventListener("message", event => {
 function clock() { document.getElementById("clock").textContent = new Date().toLocaleTimeString("de-DE", {timeZone: "Europe/Berlin"}); }
 clock();
 setInterval(clock, 1000);
+if (publicDisplay) {
+  document.querySelector('a[href="/admin"]')?.remove();
+  setInterval(publicationStatus, 1000);
+}
 async function start() {
   try {
+    if (publicDisplay) await loadPublication();
     await loadTargetCatalog();
     await loadProfiles();
     if (range !== null && (!Number.isInteger(range) || range < 1 || range > 32767)) throw new Error("Standnummer ungültig");
+    if (!profiles.length) throw new Error("Keine Profile veröffentlicht");
     const id = location.pathname.startsWith("/display/") ? location.pathname.split("/")[2] : params.get("profile") || profiles[0].id;
     await connect(id);
   } catch (error) {

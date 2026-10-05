@@ -62,6 +62,7 @@ services:
       RESOURCE_SAVER_STATUS_PATH: /results/resource-saver-status.json
     volumes:
       - profiles:/data
+      - ./.data/publication-secrets:/run/secrets:ro
       - results:/results
     depends_on:
       worker:

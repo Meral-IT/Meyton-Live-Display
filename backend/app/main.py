@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from .disciplines import DisciplineMappings, DisciplineStore, public_catalog
 from .domain import RangeState, iso
 from .profiles import Profile, ProfileStore
+from .publication import PublicationConfig, PublicationStore, SFTPPublisher, publication_failure, publish
 from .resource_saver import (PRESENCE_HEARTBEAT_SECONDS, ResourceSaverSettings,
                              ResourceSaverStore, atomic_json, read_json)
 from .sponsors import IMAGE_POLICY, MAX_REQUEST_BYTES, TYPES, LogoStore, SponsorStore
@@ -36,6 +37,12 @@ class Runtime:
         self.profiles = ProfileStore(path)
         self.disciplines = DisciplineStore(self.profiles.path.parent / "disciplines.json")
         data_directory = self.profiles.path.parent
+        self.publication_store = PublicationStore(data_directory / "publication.json")
+        self.publication = self.publication_store.active()
+        self.publication_changed = asyncio.Event()
+        self.publication_deploy_lock = threading.Lock()
+        self.publication_frontend_revision = 0
+        self.publication_status = {"state": "disabled" if not self.publication else "connecting", "last_success_at": None, "message": ""}
         result_directory = FilePath(result_path).parent if result_path else data_directory
         self.resource_saver = ResourceSaverStore(os.getenv("SETTINGS_PATH", str(data_directory / "settings.json")))
         self.viewer_presence_path = FilePath(os.getenv("VIEWER_PRESENCE_PATH", str(data_directory / "viewers.json")))
@@ -55,7 +62,7 @@ class Runtime:
         self.status["local_db"] = {"state": "starting", "message": "Lokale Datenbank wird geöffnet", "last_check_at": None}
 
     def write_viewer_presence(self, viewer_count=None):
-        count = len(self.listeners) if viewer_count is None else viewer_count
+        count = len(self.listeners) + int(self.publication is not None) if viewer_count is None else viewer_count
         now = time.time()
         if count > 0 or self._published_viewer_count > 0:
             self.last_viewer_seen_at = now
@@ -167,11 +174,18 @@ def create_app(profile_path=None, *, result_path=None):
                 runtime.write_viewer_presence()
                 await asyncio.sleep(PRESENCE_HEARTBEAT_SECONDS)
         presence_task = asyncio.create_task(presence_heartbeat())
+        publication_task = asyncio.create_task(publish(runtime))
         try:
             yield
         finally:
             runtime.stop.set()
             presence_task.cancel()
+            if publication_task:
+                publication_task.cancel()
+                try:
+                    await publication_task
+                except asyncio.CancelledError:
+                    pass
             try:
                 await presence_task
             except asyncio.CancelledError:
@@ -271,6 +285,58 @@ def create_app(profile_path=None, *, result_path=None):
         runtime = request.app.state.runtime
         await asyncio.to_thread(runtime.resource_saver.save, settings)
         return runtime.resource_saver_response()
+
+    @app.get("/api/admin/settings/publication", dependencies=[Depends(admin)])
+    def publication_settings(request: Request):
+        runtime = request.app.state.runtime
+        return {"settings": runtime.publication_store.response(), "status": runtime.publication_status}
+
+    @app.put("/api/admin/settings/publication", dependencies=[Depends(admin)])
+    async def update_publication(request: Request):
+        runtime = request.app.state.runtime
+        body = bytearray()
+        async for chunk in request.stream():
+            body.extend(chunk)
+            if len(body) > 65536:
+                raise HTTPException(413, "Veröffentlichungseinstellungen zu groß")
+        try:
+            payload = json.loads(body)
+            if not isinstance(payload, dict):
+                raise ValueError("Invalid settings")
+            if "password" not in payload:
+                payload["password"] = runtime.publication_store.settings.password
+            settings = PublicationConfig.model_validate(payload)
+        except (ValueError, TypeError, KeyError):
+            # Validation errors must not echo the submitted password.
+            raise HTTPException(400, "Eingaben prüfen: Profile, SFTP-Ziel, Zugangsdaten und optionalen Hostschlüssel") from None
+        if any(not runtime.profiles.get(profile) for profile in settings.profiles):
+            raise HTTPException(400, "Ausgewähltes Profil existiert nicht")
+        runtime.publication_store.save(settings)
+        runtime.publication = runtime.publication_store.active()
+        runtime.publication_changed.set()
+        runtime.publication_status = {"state": "connecting" if settings.enabled else "disabled", "last_success_at": None, "message": ""}
+        runtime.write_viewer_presence()
+        return publication_settings(request)
+
+    @app.post("/api/admin/settings/publication/deploy", dependencies=[Depends(admin)])
+    def deploy_publication(request: Request):
+        runtime = request.app.state.runtime
+        if runtime.publication is None:
+            raise HTTPException(409, "Veröffentlichung zuerst konfigurieren, aktivieren und speichern")
+        if not runtime.publication_deploy_lock.acquire(blocking=False):
+            raise HTTPException(409, "Bereitstellung läuft bereits")
+        publisher = SFTPPublisher(runtime.publication)
+        try:
+            publisher.connect()
+            changed = publisher.deploy_frontend()
+            if changed:
+                runtime.publication_frontend_revision += 1
+            return {"changed_files": changed}
+        except Exception as error:
+            raise HTTPException(502, publication_failure(error, publisher.operation)) from None
+        finally:
+            publisher.close()
+            runtime.publication_deploy_lock.release()
 
     @app.get("/api/logo")
     def logo_image(request: Request):

@@ -3,3 +3,4 @@ uvicorn==0.54.0
 PyMySQL==1.2.3
 smbprotocol==1.17.0
 websockets==17.0.1
+paramiko==4.0.0

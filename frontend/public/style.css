@@ -8,7 +8,7 @@ button:hover, .button:hover { filter: brightness(0.94); }
 button:disabled { opacity: 0.45; cursor: default; }
 .secondary { background: transparent; color: var(--text); border-color: #c8d6d0; }
 .danger { background: #fff0ef; color: #b62e2a; border-color: #eed1cd; margin-left: auto; }
-button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 3px solid #479ac7; outline-offset: 3px; }
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, summary:focus-visible { outline: 3px solid #479ac7; outline-offset: 3px; }
 input, select, textarea { border: 1px solid #c8d6d0; border-radius: 6px; background: var(--tile); color: var(--text); padding: 9px 10px; min-width: 0; }
 .brand { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 15px; font-weight: 750; letter-spacing: 1.3px; flex-shrink: 0; }
 .brand small { display: block; font-size: 8px; letter-spacing: 2px; font-weight: 600; color: var(--accent); margin-top: 2px; }
@@ -29,6 +29,7 @@ h1 { font-size: 23px; margin: 0; line-height: 1.15; font-weight: 650; }
 .display-actions { display: flex; align-items: center; gap: 7px; }
 .display-actions select { padding: 8px 10px; max-width: 170px; font-size: 13px; }
 #clock { font-size: 21px; font-weight: 750; line-height: 1.1; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.range-grid[hidden] { display: none; }
 .range-grid { display: grid; gap: 10px; padding: 12px; min-height: 0; }
 .range-row { display: grid; gap: 10px; min-height: 0; }
 .range-tile { container-type: inline-size; display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 12px; background: var(--tile); border: 1px solid #dbe4df; border-radius: 8px; overflow: hidden; }
@@ -125,6 +126,15 @@ iframe { position: absolute; width: 1920px; height: 1080px; border: 0; transform
 .profile-preview p { font-size: 11px; color: #73847a; line-height: 1.65; margin: 11px 0 25px; }
 .stream-link { display: flex; flex-direction: column; align-items: stretch; gap: 8px; background: #fff; border: 1px solid #dce6df; border-radius: 8px; padding: 17px; }
 .stream-link.logo-settings, .stream-link.sponsor-settings, .stream-link.discipline-settings, .stream-link.resource-saver-settings { display: block; margin-top: 16px; }
+.settings-card { align-self: start; }
+.stream-link.settings-card { display: block; margin-top: 16px; }
+.settings-card > summary { cursor: pointer; font-size: 17px; font-weight: 600; }
+.settings-card > summary h2 { display: inline; margin: 0; }
+.settings-card > summary.section-heading { display: list-item; }
+.settings-card > summary.section-heading > div { display: inline-block; vertical-align: middle; }
+.settings-card > summary #save-status { float: right; }
+.settings-card[open] > summary { margin-bottom: 16px; }
+.settings-card:not([open]) > summary { margin-bottom: 0; }
 .resource-saver-settings form { gap: 14px; }
 .resource-saver-settings button { align-self: flex-start; }
 #resource-saver-status { font-size: 12px; white-space: pre-line; }

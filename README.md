@@ -202,6 +202,10 @@ If an image pull fails, check the image name/tag and package visibility. Public 
 
 If displays stay empty, check source status, network reachability, source credentials, SDF export, and whether a new shot has arrived since initial setup. For certificate errors, check `DISPLAY_ADDRESS` and trust the public CA certificate. See [commissioning and verification](docs/technical-reference.md#verification) for deeper checks.
 
+## Public display outside the range
+
+Publish approved profiles to a separate IONOS website using outbound SFTP. The public site reuses the display interface and polls static snapshots; Joomla needs only a link. Configure SFTP, credentials, approved profiles and name publication in the local HTTPS admin page. Publication is disabled by default, with shooter names hidden unless explicitly enabled. See the [public display setup](docs/public-display.md) for credentials, host-key verification, deployment, and limitations.
+
 ## Technical documentation
 
 [Technical reference](docs/technical-reference.md) covers architecture, configuration, Meyton source formats, occupancy, storage, API endpoints, backup/restore, verification, and release automation. The [SSMDB2 schema graph](doc/SSMDB2.graphml) remains under `doc/`.

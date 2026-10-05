@@ -10,8 +10,8 @@
   <header class="editor-header"><a class="brand" href="/" aria-label="Zur Anzeige"><img class="brand-logo" alt=""><span class="brand-mark" aria-hidden="true">◎</span><span class="brand-title">MEYTON<small>LIVE DISPLAY</small></span></a><h1>Anzeigeprofile</h1><a class="button secondary" href="/">Zur Anzeige</a></header>
   <main class="editor-layout">
     <aside class="profile-sidebar"><h2>Profile</h2><div id="profile-list" aria-label="Gespeicherte Profile"></div><button type="button" id="new-profile">Neues Profil</button></aside>
-    <section class="profile-settings" aria-labelledby="settings-heading">
-      <div class="section-heading"><div><span class="eyebrow">LAYOUT & DARSTELLUNG</span><h2 id="settings-heading">Profil bearbeiten</h2></div><span id="save-status" role="status" aria-live="polite"></span></div>
+    <details class="profile-settings settings-card" aria-labelledby="settings-heading" open>
+      <summary class="section-heading"><div><span class="eyebrow">LAYOUT & DARSTELLUNG</span><h2 id="settings-heading">Profil bearbeiten</h2></div><span id="save-status" role="status" aria-live="polite"></span></summary>
       <form id="profile-form">
         <div class="form-pair"><label>Name<input id="name" maxlength="64" required></label><label>Profil-ID<input id="profile-id" maxlength="48" pattern="[a-z0-9][a-z0-9-]{0,47}" required><small>Teil der festen Anzeige-URL.</small></label></div>
         <label>Stände pro Zeile<textarea id="rows" rows="3" required aria-describedby="rows-help"></textarea><small id="rows-help">Eine Zeile pro Bildschirmreihe. Standnummern durch Kommas trennen, z. B. 1, 2, 3, 4, 5.</small></label>
@@ -30,12 +30,12 @@
         <p class="form-note">Serienzuordnung und verdeckte Treffer werden mit SSMDB2 abgeglichen. Eigene Scheibentypen zeigen Ergebnisse ohne Schussbild.</p>
         <div class="form-actions"><button type="submit" id="save-profile">Profil speichern</button><button type="button" id="duplicate-profile" class="secondary">Duplizieren</button><button type="button" id="delete-profile" class="danger">Löschen</button></div>
       </form>
-    </section>
-    <section class="profile-preview" aria-labelledby="preview-heading"><div class="section-heading"><h2 id="preview-heading">Vorschau</h2><a id="open-display" target="_blank" rel="noopener">Anzeige öffnen</a></div><div class="preview-frame"><iframe id="preview" title="Vorschau des Anzeigeprofils"></iframe></div><p>Vorschau mit 1920 × 1080. Änderungen erscheinen ohne Speichern; neue Stände werden nach dem Speichern eingelesen.</p><div class="stream-link"><label for="obs-url">OBS-Browserquelle</label><div class="obs-url-controls"><input id="obs-url" readonly><button type="button" id="copy-url" class="secondary">URL kopieren</button></div><p>Browserquelle: 1920 × 1080.</p>
+    </details>
+    <section class="profile-preview" aria-labelledby="preview-heading"><div class="section-heading"><h2 id="preview-heading">Vorschau</h2><a id="open-display" target="_blank" rel="noopener">Anzeige öffnen</a></div><div class="preview-frame"><iframe id="preview" title="Vorschau des Anzeigeprofils"></iframe></div><p>Vorschau mit 1920 × 1080. Änderungen erscheinen ohne Speichern; neue Stände werden nach dem Speichern eingelesen.</p><details class="stream-link settings-card"><summary>OBS-Browserquelle</summary><label class="sr-only" for="obs-url">OBS-Browserquelle</label><div class="obs-url-controls"><input id="obs-url" readonly><button type="button" id="copy-url" class="secondary">URL kopieren</button></div><p>Browserquelle: 1920 × 1080.</p>
         <section class="certificate-download" aria-label="HTTPS-Zertifikat"><a class="button secondary" href="/meyton-root.crt" download="meyton-root.crt">CA-Zertifikat herunterladen</a><p>Für HTTPS muss die lokale Zertifizierungsstelle auf dem OBS-Rechner vertraut sein.</p></section>
-      </div>
-      <section class="stream-link resource-saver-settings" aria-labelledby="resource-saver-heading">
-        <h2 id="resource-saver-heading">Ressourcenschonmodus</h2>
+      </details>
+      <details class="stream-link settings-card resource-saver-settings" aria-labelledby="resource-saver-heading">
+        <summary><h2 id="resource-saver-heading">Ressourcenschonmodus</h2></summary>
         <p class="form-note">Reduziert Zugriffe auf ShootMaster bei 30 Minuten ohne Standänderung, 20 Minuten vollständigem Quellenausfall oder 5 Minuten ohne verbundene Anzeige.</p>
         <form id="resource-saver-form">
           <label class="checkbox"><input id="resource-saver-enabled" type="checkbox">Ressourcenschonmodus aktivieren</label>
@@ -43,9 +43,35 @@
           <button id="save-resource-saver" type="submit">Einstellung speichern</button>
         </form>
         <p id="resource-saver-status" role="status" aria-live="polite"></p>
-      </section>
-      <section class="stream-link logo-settings" aria-labelledby="logo-heading">
-        <h2 id="logo-heading">Eigenes Logo</h2>
+      </details>
+      <details class="stream-link settings-card publication-settings" aria-labelledby="publication-heading">
+        <summary><h2 id="publication-heading">Öffentliche Anzeige · SFTP</h2></summary>
+        <p class="form-note">Überträgt ausgewählte Profile an die öffentliche Webseite. Webseite mit „Webseite bereitstellen“ nach dem Speichern hochladen; nach Updates erneut bereitstellen. Deaktivieren stoppt Updates, löscht aber keine bereits veröffentlichten Daten.</p>
+        <form id="publication-form">
+          <label class="checkbox"><input id="publication-enabled" type="checkbox">Veröffentlichung aktivieren</label>
+          <label>Öffentliche Profile<select id="publication-profiles" multiple size="4"></select><small>Nur ausgewählte Profile und deren Stände werden veröffentlicht.</small></label>
+          <label class="checkbox"><input id="publication-names" type="checkbox">Schützennamen veröffentlichen (nur mit Freigabe)</label>
+          <label>Übertragungsintervall<select id="publication-interval">
+            <option value="10">10 Sekunden</option><option value="15">15 Sekunden</option><option value="30">30 Sekunden</option>
+            <option value="60" selected>1 Minute</option><option value="120">2 Minuten</option><option value="300">5 Minuten</option>
+            <option value="600">10 Minuten</option><option value="900">15 Minuten</option><option value="1800">30 Minuten</option><option value="3600">1 Stunde</option>
+          </select><small>Standard: 1 Minute. Gilt für Datenübertragungen; die Webseite wird nur per Button bereitgestellt.</small></label>
+          <label>SFTP-Server<input id="publication-host" type="text" maxlength="253" autocomplete="off" placeholder="access….webspace-data.io"></label>
+          <label>Port<input id="publication-port" type="number" min="1" max="65535" value="22" required></label>
+          <label>SFTP-Benutzer<input id="publication-user" type="text" maxlength="128" autocomplete="off"></label>
+          <label>Zielverzeichnis<input id="publication-directory" type="text" maxlength="512" value="."><small>Verwendet den angegebenen SFTP-Pfad unverändert. „.“ verwendet das Anmeldeverzeichnis.</small></label>
+          <label>SFTP-Passwort<input id="publication-password" type="password" maxlength="4096" autocomplete="new-password"><small>Leer lassen, um das gespeicherte Passwort beizubehalten. Es wird nie zurückgegeben.</small></label>
+          <label class="checkbox"><input id="publication-clear-password" type="checkbox">Gespeichertes Passwort entfernen</label>
+          <label>SSH-Schlüsseldatei (optional)<input id="publication-key-file" type="text" maxlength="512" placeholder="/run/secrets/id_ed25519"><small>Bereits auf dem Server bereitgestellte Datei. Alternativ zum Passwort.</small></label>
+          <label>Verifizierter Hostschlüssel (optional)<textarea id="publication-known-hosts" rows="4" maxlength="32768" spellcheck="false" placeholder="hostname ssh-ed25519 AAAA…"></textarea><small>known_hosts-Zeile vom Anbieter prüfen. Leer: Der erste empfangene Schlüssel wird gespeichert; spätere Änderungen werden abgelehnt. Die Identität ist beim ersten Verbinden ungeprüft. Bei anderem Port: [hostname]:port.</small></label>
+          <button id="save-publication" type="submit">Veröffentlichung speichern</button>
+        </form>
+        <button id="deploy-publication" type="button" class="secondary" disabled>Webseite bereitstellen</button>
+        <p id="publication-deploy-status" role="status" aria-live="polite"></p>
+        <p id="publication-status" role="status" aria-live="polite"></p>
+      </details>
+      <details class="stream-link settings-card logo-settings" aria-labelledby="logo-heading">
+        <summary><h2 id="logo-heading">Eigenes Logo</h2></summary>
         <p class="form-note">Für alle Anzeigen und die Verwaltung. Ohne eigenes Logo erscheint der bisherige Titel.</p>
         <img id="logo-preview" class="logo-preview" alt="Aktuelles Logo" hidden>
         <form id="logo-form">
@@ -53,18 +79,18 @@
           <div class="form-actions"><button id="upload-logo" type="submit">Logo hochladen</button><button id="delete-logo" type="button" class="secondary" disabled>Logo entfernen</button></div>
         </form>
         <p id="logo-status" role="status" aria-live="polite"></p>
-      </section>
-      <section class="stream-link discipline-settings" aria-labelledby="discipline-heading">
-        <h2 id="discipline-heading">Eigene Disziplinen</h2>
+      </details>
+      <details class="stream-link settings-card discipline-settings" aria-labelledby="discipline-heading">
+        <summary><h2 id="discipline-heading">Eigene Disziplinen</h2></summary>
         <p class="form-note">Ordnet lokale Disziplinnamen einer unterstützten DSB-Regel oder Scheibe zu. Meyton-Standard-IDs haben Vorrang.</p>
         <form id="discipline-form">
           <div id="discipline-list" class="discipline-list"></div>
           <div class="form-actions"><button id="add-discipline" type="button" class="secondary">Zuordnung hinzufügen</button><button id="save-disciplines" type="submit">Zuordnungen speichern</button></div>
         </form>
         <p id="discipline-status" role="status" aria-live="polite"></p>
-      </section>
-      <section class="stream-link sponsor-settings" aria-labelledby="sponsors-heading">
-        <h2 id="sponsors-heading">Sponsorenbilder</h2>
+      </details>
+      <details class="stream-link settings-card sponsor-settings" aria-labelledby="sponsors-heading">
+        <summary><h2 id="sponsors-heading">Sponsorenbilder</h2></summary>
         <p class="form-note">Für alle Profile. Leere Stände zeigen ein zufälliges Bild. Optionalen Text je Bild eingeben und speichern; leer lassen für ein Bild ohne Text. Ohne Bilder bleibt die bisherige Anzeige.</p>
         <form id="sponsor-form">
           <label>Bilder auswählen<input id="sponsor-files" type="file" accept="image/png,image/jpeg,image/svg+xml,.png,.jpg,.jpeg,.svg" multiple required><small>PNG, JPEG oder SVG · maximal 5 MiB pro Bild.</small></label>
@@ -72,7 +98,7 @@
         </form>
         <p id="sponsor-status" role="status" aria-live="polite"></p>
         <div id="sponsor-list" class="sponsor-list"></div>
-      </section>
+      </details>
     </section>
   </main>
 </body>
