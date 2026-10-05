@@ -169,6 +169,20 @@ docker compose up -d --build --pull never
 
 For a source-built demo, add `-f compose.yaml -f compose.demo.yaml` before `up`. `--pull never` applies to service images; Docker may still download Dockerfile base images and Python dependencies during a build.
 
+### Deploy local builds over SSH to the range
+
+Prepare a directory on the target with a configured `.env` (see setup above), then run:
+
+```sh
+./tools/deploy-range.sh range-user@range-host /opt/meyton-live-display
+```
+
+The script builds both images for the target Docker host's architecture, copies an image archive over SSH into the target directory, loads it, and runs `docker compose up -d --pull never --no-build` with `IMAGE_TAG=range-test`. No registry login or service-image pull is needed. Temporary archives are removed after deployment, including on failure.
+
+The target needs Docker Compose v2 and an SSH user with Docker access and write access to the directory. Your local Docker builder must support the target architecture (`amd64` or `arm64`); Docker Desktop includes cross-platform build support. Builds may download base images and Python dependencies.
+
+An existing target `compose.yaml` is preserved, including local SDF mount edits. If missing, the script copies the repository's Compose file. The target `.env` and persistent volumes are kept. Subsequent manual Compose commands must use `IMAGE_TAG=range-test` to keep using these local builds. Use SSH configuration for custom ports or keys.
+
 ### Update and operate
 
 Back up results, profiles, sponsor files, and Caddy data before upgrades. Use the [backup and restore guide](docs/technical-reference.md#backup-and-restore).
