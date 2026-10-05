@@ -308,7 +308,7 @@ def create_app(profile_path=None, *, result_path=None):
             settings = PublicationConfig.model_validate(payload)
         except (ValueError, TypeError, KeyError):
             # Validation errors must not echo the submitted password.
-            raise HTTPException(400, "Eingaben prüfen: Profile, SFTP-Ziel, Zugangsdaten und optionalen Hostschlüssel") from None
+            raise HTTPException(400, "Eingaben prüfen: Profile, SFTP-Ziel, Zugangsdaten, iframe-Ursprünge und optionalen Hostschlüssel") from None
         if any(not runtime.profiles.get(profile) for profile in settings.profiles):
             raise HTTPException(400, "Ausgewähltes Profil existiert nicht")
         runtime.publication_store.save(settings)

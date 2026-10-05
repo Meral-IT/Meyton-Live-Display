@@ -69,6 +69,7 @@ def main():
             assert page.locator('#publication-interval').input_value() == '60'
             page.locator('#publication-interval').select_option('300')
             page.locator('#publication-host').fill('example.test')
+            page.locator('#publication-iframe-origins').fill('https://www.example.org')
             page.locator('#publication-user').fill('publisher')
             page.locator('#publication-directory').fill('.')
             page.locator('#publication-password').fill('private-password')
@@ -78,6 +79,7 @@ def main():
             page.locator('#save-publication').click()
             page.wait_for_function("document.getElementById('publication-status').textContent.includes('Gespeichert')")
             assert app.state.runtime.publication.password == 'private-password'
+            assert app.state.runtime.publication.iframe_origins == 'https://www.example.org'
             with patch.object(SFTPPublisher, 'connect'), patch.object(SFTPPublisher, 'deploy_frontend', return_value=2) as deploy:
                 page.locator('#deploy-publication').click()
                 page.wait_for_function("document.getElementById('publication-deploy-status').textContent.includes('2 Dateien')")
@@ -89,6 +91,7 @@ def main():
             assert page.locator('#publication-password').input_value() == ''
             assert page.locator('#publication-password').get_attribute('placeholder') == 'Passwort gespeichert'
             assert page.locator('#publication-host').input_value() == 'example.test'
+            assert page.locator('#publication-iframe-origins').input_value() == 'https://www.example.org'
             assert page.locator('#publication-interval').input_value() == '300'
             page.locator('#publication-enabled').uncheck()
             page.locator('#publication-clear-password').check()

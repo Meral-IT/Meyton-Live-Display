@@ -130,6 +130,29 @@ class PublicationChecks(unittest.TestCase):
                         asyncio.run(publish(runtime))
                 self.assertEqual(waits, [expected])
 
+    def test_iframe_origins_validation_and_deployment(self):
+        from app.publication import PublicationConfig
+        from app.public_assets import public_assets
+        self.assertIn(b"frame-ancestors 'self';", public_assets()[".htaccess"])
+        origins = "https://example.org https://www.example.org:8443"
+        with tempfile.TemporaryDirectory() as directory:
+            store = PublicationStore(Path(directory) / "publication.json")
+            store.save(PublicationConfig(enabled=True, profiles=["luftgewehr"], host="example.test",
+                                         user="publisher", password="secret", iframe_origins=origins))
+            self.assertEqual(PublicationStore(store.path).active().iframe_origins, origins)
+            publisher = SFTPPublisher(store.active())
+            publisher.sftp = Mock()
+            publisher.sftp.open.side_effect = FileNotFoundError
+            publisher.deploy_frontend()
+            uploads = {call.args[1]: call.args[0].getvalue() for call in publisher.sftp.putfo.call_args_list}
+            htaccess = uploads[".htaccess.tmp"]
+            self.assertIn(("frame-ancestors 'self' " + origins + ";").encode(), htaccess)
+            self.assertIn(b"RewriteRule ^(?:admin|api)", htaccess)
+        for invalid in ("*", "http://example.org", "https://*.example.org", "https://example.org/path",
+                        "https://user@example.org", 'https://example.org"', "https://example.org;", "https://example.org:0", "https://example.org:65536"):
+            with self.subTest(origin=invalid), self.assertRaises(ValueError):
+                PublicationConfig(iframe_origins=invalid)
+
     def test_manual_frontend_deployment_uploads_only_changed_files(self):
         from app.public_assets import public_assets
         files = public_assets()

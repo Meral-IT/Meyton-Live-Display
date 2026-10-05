@@ -283,7 +283,7 @@ function showPublication(data, updateInputs = true) {
   if (updateInputs) {
     const settings = data.settings;
     for (const name of ["enabled", "names"]) byId(`publication-${name}`).checked = settings[name];
-    for (const name of ["host", "port", "user", "directory", "key_file", "known_hosts"]) {
+    for (const name of ["host", "port", "user", "directory", "key_file", "known_hosts", "iframe_origins"]) {
       byId(`publication-${name.replaceAll("_", "-")}`).value = settings[name];
     }
     byId("publication-interval").value = settings.interval_seconds;
@@ -328,7 +328,7 @@ byId("publication-form").addEventListener("submit", async event => {
       port: byId("publication-port").valueAsNumber,
       interval_seconds: Number(byId("publication-interval").value),
     };
-    for (const name of ["host", "user", "directory", "key_file", "known_hosts"]) {
+    for (const name of ["host", "user", "directory", "key_file", "known_hosts", "iframe_origins"]) {
       settings[name] = byId(`publication-${name.replaceAll("_", "-")}`).value;
     }
     if (byId("publication-clear-password").checked) settings.password = "";

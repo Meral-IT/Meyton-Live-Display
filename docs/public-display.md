@@ -47,11 +47,11 @@ Use matching source exports and backend versions. Once a release containing this
 - Disabling publication in the web UI stops updates. It does not erase files on IONOS. Remove `live.json` manually if public data must be withdrawn immediately. Hiding stale results is a display behavior, not server-side deletion or access control.
 - Frontend assets deploy only when **Webseite bereitstellen** is clicked. They come from the installed backend image; rebuild/update that image before deploying an update. Changed files replace atomically, with `index.html` last. A successful deployment of changed files makes connected public displays reload on the next snapshot. Deployment owns the exported files, including `.htaccess`; unrelated files are left alone.
 
-Link Joomla's menu to `https://live.example.org/`. Direct URLs such as `/display/luftgewehr` and `/range/1?profile=luftgewehr` work on the dedicated subdomain. For an iframe, add the exact HTTPS origin of Joomla to `frame-ancestors 'self'` in the source `hosting/.htaccess`, then rebuild the backend image and deploy. Do not use a wildcard.
+Link Joomla's menu to `https://live.example.org/`. Direct URLs such as `/display/luftgewehr` and `/range/1?profile=luftgewehr` work on the dedicated subdomain. For iframe embedding, enter Joomla's exact HTTPS origin under **Erlaubte iframe-Ursprünge** in **Öffentliche Anzeige · SFTP**. Separate multiple origins with spaces, without paths or wildcards (for example, `https://example.org https://www.example.org`). Save, then click **Webseite bereitstellen** to update `.htaccess`. Leaving the field blank permits only the public site's own origin; no external origins are preconfigured.
 
 ## Customize public assets
 
-The backend reads the public page from `/app/frontend/public` and Apache rules from `/app/hosting/.htaccess`. To customize `.htaccess` without rebuilding the image, copy `hosting/.htaccess` to `custom-public/.htaccess`, edit it (for example, add your website's exact HTTPS origin to `frame-ancestors` for iframe embedding), and create `compose.override.yaml`:
+The backend reads the public page from `/app/frontend/public` and Apache rules from `/app/hosting/.htaccess`. To customize `.htaccess` without rebuilding the image, copy `hosting/.htaccess` to `custom-public/.htaccess`, edit it, and create `compose.override.yaml`:
 
 ```yaml
 services:
@@ -62,7 +62,7 @@ services:
       # - ./custom-public/style.css:/app/frontend/public/style.css:ro
 ```
 
-Create the files before starting Compose and make them readable by container UID 10001. Run `docker compose up -d backend`, then click **Webseite bereitstellen** to upload the customized assets. Mount other existing public files the same way; only `index.html`, the bundled JavaScript/CSS, and files under `vendor/` are exported. Keep the default access restrictions, cache headers, and routing rules when editing `.htaccess`. Each deployment reapplies these mounted files, so edits made directly on the hosting server can be overwritten. Alternatively, edit the source files, rebuild the backend image, and deploy.
+Create the files before starting Compose and make them readable by container UID 10001. Run `docker compose up -d backend`, then click **Webseite bereitstellen** to upload the customized assets. Mount other existing public files the same way; only `index.html`, the bundled JavaScript/CSS, and files under `vendor/` are exported. Keep the default access restrictions, cache headers, and routing rules when editing `.htaccess`. The saved iframe origins replace the mounted file's `frame-ancestors` directive, which must appear exactly once. Each deployment reapplies these mounted files, so edits made directly on the hosting server can be overwritten. Alternatively, edit the source files, rebuild the backend image, and deploy.
 
 ## Verify before sharing
 

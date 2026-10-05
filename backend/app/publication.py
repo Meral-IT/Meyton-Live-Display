@@ -12,6 +12,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -37,6 +38,7 @@ class PublicationSettings:
     known_hosts: str = ""
     trust_file: str = ""
     interval_seconds: int = 60
+    iframe_origins: str = ""
 
 
 def parse_host_keys(text):
@@ -69,9 +71,17 @@ class PublicationConfig(BaseModel):
     password: str = Field(default="", max_length=4096, repr=False)
     known_hosts: str = Field(default="", max_length=32768)
     key_file: str = Field(default="", max_length=512)
+    iframe_origins: str = Field(default="", max_length=2048)
 
     @model_validator(mode="after")
     def validate_destination(self):
+        for origin in self.iframe_origins.split():
+            if not re.fullmatch(r"https://[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?(?::[0-9]{1,5})?", origin):
+                raise ValueError("Iframe origins must be exact HTTPS origins without paths")
+            port = urlsplit(origin).port
+            if port is not None and not 1 <= port <= 65535:
+                raise ValueError("Invalid iframe origin port")
+        self.iframe_origins = " ".join(self.iframe_origins.split())
         if (len(set(self.profiles)) != len(self.profiles)
                 or any(not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,47}", p) for p in self.profiles)
                 or any(c in self.user + self.directory for c in "\r\n\x00")
@@ -108,7 +118,7 @@ class PublicationStore:
             return None
         return PublicationSettings(tuple(s.profiles), s.names, s.host, s.port, s.user, s.directory,
                                    s.key_file, s.password or None, s.known_hosts,
-                                   str(self.path.with_name("publication_known_hosts")), s.interval_seconds)
+                                   str(self.path.with_name("publication_known_hosts")), s.interval_seconds, s.iframe_origins)
 
     def response(self):
         return self.settings.model_dump(exclude={"password"}) | {"password_set": bool(self.settings.password)}
@@ -223,7 +233,7 @@ class SFTPPublisher:
         self.operation = "frontend deployment"
         changed = 0
         # Manual deployment compares content and transfers only changed files.
-        for name, data in public_assets().items():
+        for name, data in public_assets(self.settings.iframe_origins).items():
             try:
                 with self.sftp.open(name, "rb") as remote:
                     unchanged = remote.read(len(data) + 1) == data
