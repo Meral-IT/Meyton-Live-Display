@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 
 from app.disciplines import DisciplineMapping, DisciplineMappings, DisciplineStore, public_catalog, resolve_target_rule
 from app.domain import MAX_XML_BYTES, RangeState, from_db, parse_sdf, score, shooter_name, stamp, target_id
-from app.main import create_app
+from app.main import Runtime, create_app
 from app.profiles import Profile, ProfileStore, seeds
 from app.sources import LANAReader, SDFReader, lana_lanes, read_startlist_ids
 from app.storage import ResultStore
@@ -40,6 +40,41 @@ def xml(status="LIVE_UPDATE", position=1):
     <RingValue><Result>105</Result><Unit>ZehntelRing</Unit></RingValue>
     <TimeStamp><DateTime>2026-09-30T20:12:59Z</DateTime><Hundredth>27</Hundredth></TimeStamp>
     </Shot></AimingData></Aimings></ResultRecord></ResultList>'''.encode()
+
+
+class SnapshotChecks(unittest.TestCase):
+    def test_unconfirmed_stands_are_empty_only_with_healthy_live_occupancy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime = Runtime(Path(directory) / "profiles.json")
+            lanes = [1, 2, 3, 4, 51, 52, 53, 54]
+            profile = Profile(id="test", name="Test", rows=[lanes[:4], lanes[4:]])
+            runtime.profiles.save([profile])
+            for lane in lanes:
+                runtime.ranges.apply({**target(), "lane": lane, "id": -lane})
+            self.assertTrue(all(entry["target"] for row in runtime.snapshot("test")["rows"] for entry in row))
+            runtime.ranges.set_occupancy({lane: {"state": "occupied", "shooter": "Test, Ada"}
+                                          for lane in lanes[4:]})
+            for source in ("worker", "local_db", "lana"):
+                runtime.status[source]["state"] = "connected"
+            data = runtime.snapshot("test")
+            self.assertEqual([[entry["lane"] for entry in row] for row in data["rows"]], profile.rows)
+            self.assertTrue(all(entry["target"] is None for entry in data["rows"][0]))
+            self.assertTrue(all(entry["target"] for entry in data["rows"][1]))
+            self.assertIsNone(runtime.snapshot("test", lane=1)["rows"][0][0]["target"])
+            self.assertIsNone(runtime.snapshot(profile=profile)["rows"][0][0]["target"])
+            for source, state in (("lana", "disconnected"), ("lana", "degraded"),
+                                  ("worker", "degraded"), ("local_db", "disconnected")):
+                with self.subTest(source=source, state=state):
+                    runtime.status[source]["state"] = state
+                    self.assertIsNotNone(runtime.snapshot("test", lane=1)["rows"][0][0]["target"])
+                    runtime.status[source]["state"] = "connected"
+            runtime.ranges.set_occupancy({1: {"state": "occupied", "shooter": "Test, Ada"},
+                                          2: {"state": "free", "shooter": "Unbekannt"},
+                                          3: {"state": "occupied", "shooter": "New, Shooter"}})
+            entries = runtime.snapshot("test")["rows"][0]
+            self.assertIsNotNone(entries[0]["target"])
+            self.assertTrue(all(entry["target"] is None for entry in entries[1:]))
+            self.assertEqual(set(runtime.ranges.targets), set(lanes))
 
 
 class DomainChecks(unittest.TestCase):

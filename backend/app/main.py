@@ -116,7 +116,8 @@ class Runtime:
             self.status.get(source, {}).get("state") == "connected" for source in ("lana", "demo"))
         return {"runtime_id": self.id, "profile": profile.model_dump(), "revision": self.revision,
                 "rule_catalog_revision": public_catalog()["revision"],
-                "rows": [[{"lane": lane, "target": self.ranges.public(lane, profile, self.disciplines.rules),
+                "rows": [[{"lane": lane, "target": self.ranges.public(lane, profile, self.disciplines.rules)
+                           if not occupancy_confirmed or self.ranges.occupancy.get(lane) in ("free", "occupied") else None,
                            "live_shooter": self.ranges.live_shooters.get(lane),
                            "occupancy": self.ranges.occupancy.get(lane, "unknown") if occupancy_confirmed else "unknown"}
                           for lane in row] for row in profile.rows],
