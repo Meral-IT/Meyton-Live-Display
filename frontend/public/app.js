@@ -28,6 +28,34 @@ document.body.classList.toggle("obs", obs || preview);
 document.body.classList.toggle("obs-cards", obs === "2");
 document.body.classList.toggle("preview", preview);
 
+function assignSponsors(lanes, sponsors) {
+  const visible = new Set(lanes);
+  const counts = new Map(sponsors.map(image => [image.id, 0]));
+  for (const [lane, id] of sponsorChoices) {
+    if (!visible.has(lane) || !counts.has(id)) sponsorChoices.delete(lane);
+    else counts.set(id, counts.get(id) + 1);
+  }
+  if (!counts.size) return;
+  const choose = count => {
+    const candidates = [...counts.keys()].filter(id => counts.get(id) === count);
+    return candidates[Math.floor(Math.random() * candidates.length)];
+  };
+  for (const lane of lanes) {
+    if (sponsorChoices.has(lane)) continue;
+    const id = choose(Math.min(...counts.values()));
+    sponsorChoices.set(lane, id);
+    counts.set(id, counts.get(id) + 1);
+  }
+  while (Math.max(...counts.values()) - Math.min(...counts.values()) > 1) {
+    const from = choose(Math.max(...counts.values()));
+    const to = choose(Math.min(...counts.values()));
+    const lane = [...sponsorChoices.keys()].find(lane => sponsorChoices.get(lane) === from);
+    sponsorChoices.set(lane, to);
+    counts.set(from, counts.get(from) - 1);
+    counts.set(to, counts.get(to) + 1);
+  }
+}
+
 function tile(entry, profile, sponsors) {
   const card = element("article", "range-tile");
   card.dataset.lane = entry.lane;
@@ -60,18 +88,17 @@ function tile(entry, profile, sponsors) {
     if (occupancy === "occupied" && entry.live_shooter && profile.fields.includes("shooter")) card.append(element("h2", "shooter", entry.live_shooter));
     const empty = element("div", "target-empty");
     const emptyMessage = element("p", "", occupancy === "free" ? "Stand frei" : "Noch keine aktuelle Scheibe");
-    if (sponsors.length) {
-      let sponsor = sponsors.find(image => image.id === sponsorChoices.get(entry.lane));
-      if (!sponsor) {
-        sponsor = sponsors[Math.floor(Math.random() * sponsors.length)];
-        sponsorChoices.set(entry.lane, sponsor.id);
-      }
+    const sponsor = sponsors.find(image => image.id === sponsorChoices.get(entry.lane));
+    if (sponsor) {
       empty.classList.add("sponsored");
       const image = element("img", "sponsor-image");
       image.src = sponsor.url;
       image.alt = `Sponsor: ${sponsor.name}`;
       image.onerror = () => { image.remove(); empty.classList.remove("sponsored"); empty.prepend(element("span", "empty-symbol", "◎")); };
-      empty.append(emptyMessage, image);
+      empty.append(emptyMessage);
+      const topText = sponsor.top_text ?? "mit freundlicher Unterstützung durch";
+      if (topText) empty.append(element("div", "sponsor-caption", topText));
+      empty.append(image);
       if (sponsor.text) empty.append(element("div", "sponsor-caption", sponsor.text));
     } else {
       empty.append(element("span", "empty-symbol", "◎"), emptyMessage, element("small", "", occupancy === "occupied" ? "Warten auf Ergebnisexport" : "Stand bleibt im Profil sichtbar"));
@@ -79,7 +106,6 @@ function tile(entry, profile, sponsors) {
     card.append(empty);
     return card;
   }
-  sponsorChoices.delete(entry.lane);
   if (profile.fields.includes("shooter")) card.append(element("h2", "shooter", state.shooter || "Unbekannt"));
   if (discipline && !profile.discipline_inline) card.append(element("div", "discipline", discipline));
   const stats = element("div", "tile-stats");
@@ -175,6 +201,7 @@ function render(snapshot, liveUpdate = false) {
   // ponytail: missing live status approximates unavailable; use an explicit power flag if LANA exposes one.
   const rows = profile.rows.map(row => row.filter(lane => !profile.hide_unavailable || !liveConnected ||
     ["free", "occupied"].includes(known.get(lane)?.occupancy))).filter(row => row.length);
+  assignSponsors(rows.flat().filter(lane => !known.get(lane)?.target), snapshot.sponsors || []);
   grid.style.gridTemplateRows = rows.length ? `repeat(${rows.length}, minmax(0, 1fr))` : "none";
   grid.replaceChildren(...rows.map(row => {
     const nodes = element("section", "range-row");

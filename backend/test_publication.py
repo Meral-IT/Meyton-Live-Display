@@ -20,6 +20,17 @@ from test_app import target
 
 
 class PublicationChecks(unittest.TestCase):
+    def test_sponsor_captions_and_asset_urls(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime = Runtime(Path(directory) / "profiles.json")
+            image = runtime.sponsors.add("Sponsor.svg", base64.b64encode(b'<svg xmlns="http://www.w3.org/2000/svg"/>').decode())
+            runtime.sponsors.set_text(image["id"], "Unten", "Oben")
+            data, assets = build_publication(runtime, self.settings())
+            published = json.loads(data)["snapshots"]["luftgewehr"]["sponsors"][0]
+            self.assertEqual((published["top_text"], published["text"]), ("Oben", "Unten"))
+            self.assertEqual(published["url"], "/" + next(iter(assets)))
+            self.assertEqual(runtime.sponsors.images[0]["url"], image["url"])
+
     def settings(self, **changes):
         settings = PublicationSettings(("luftgewehr",), False, "example.test", 22, "publisher", "/meyton-live-display",
                                        "", "secret", "")

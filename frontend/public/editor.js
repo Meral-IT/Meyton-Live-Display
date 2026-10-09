@@ -382,13 +382,20 @@ async function loadSponsors() {
     name.textContent = image.name;
     name.title = image.name;
     const label = document.createElement("label");
-    label.textContent = "Text (optional)";
+    label.textContent = "Text unten";
     const text = document.createElement("textarea");
     text.rows = 2;
     text.maxLength = 300;
     text.value = image.text || "";
     text.placeholder = "z. B. powered by Meral IT";
     label.append(text);
+    const topLabel = document.createElement("label");
+    topLabel.textContent = "Text oben";
+    const topText = document.createElement("textarea");
+    topText.rows = 2;
+    topText.maxLength = 300;
+    topText.value = image.top_text ?? "mit freundlicher Unterstützung durch";
+    topLabel.append(topText);
     const save = document.createElement("button");
     save.type = "button";
     save.textContent = "Text speichern";
@@ -396,8 +403,9 @@ async function loadSponsors() {
     save.onclick = async () => {
       save.disabled = true;
       try {
-        const saved = await api(`/${encodeURIComponent(image.id)}`, {method: "PUT", body: JSON.stringify({text: text.value})}, "/api/admin/sponsors");
+        const saved = await api(`/${encodeURIComponent(image.id)}`, {method: "PUT", body: JSON.stringify({text: text.value, top_text: topText.value})}, "/api/admin/sponsors");
         text.value = saved.text;
+        topText.value = saved.top_text;
         byId("sponsor-status").textContent = "Text gespeichert · Anzeigen aktualisiert";
         updatePreview();
       } catch (error) { byId("sponsor-status").textContent = error.message; }
@@ -417,7 +425,7 @@ async function loadSponsors() {
         updatePreview();
       } catch (error) { byId("sponsor-status").textContent = error.message; remove.disabled = false; }
     };
-    item.append(thumbnail, name, label, save, remove);
+    item.append(thumbnail, name, topLabel, label, save, remove);
     return item;
   }));
 }

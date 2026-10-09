@@ -17,6 +17,62 @@ SVG = b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 100"><rect widt
 
 
 class SponsorChecks(unittest.TestCase):
+    def test_captions_legacy_persistence_and_atomic_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = SponsorStore(directory)
+            image = store.add("Logo.png", PNG)
+            self.assertEqual(image["top_text"], "mit freundlicher Unterstützung durch")
+            self.assertEqual(image["text"], "")
+            legacy = Path(directory) / (image["id"] + ".txt")
+            legacy.write_text("Alter Sponsorentext", encoding="utf-8")
+            store = SponsorStore(directory)
+            self.assertEqual(store.images[0]["text"], "Alter Sponsorentext")
+            saved = store.set_text(image["id"], " Unten ", " Oben ")
+            self.assertEqual((saved["top_text"], saved["text"]), ("Oben", "Unten"))
+            self.assertEqual(SponsorStore(directory).images, [saved])
+            saved = store.set_text(image["id"], "Neu")
+            self.assertEqual(saved["top_text"], "Oben")
+            with patch("app.sponsors.os.replace", side_effect=OSError("disk unavailable")):
+                with self.assertRaises(OSError):
+                    store.set_text(image["id"], "Lost bottom", "Lost top")
+            self.assertEqual(store.images, [saved])
+            self.assertEqual(SponsorStore(directory).images, [saved])
+            for text, top in [("x" * 301, ""), ("", "x" * 301), (42, ""), ("", 42)]:
+                with self.assertRaises(ValueError):
+                    store.set_text(image["id"], text, top)
+            cleared = store.set_text(image["id"], "", "")
+            self.assertEqual((cleared["top_text"], cleared["text"]), ("", ""))
+            self.assertEqual(SponsorStore(directory).images, [cleared])
+            store.delete(image["id"])
+            self.assertEqual(list(Path(directory).iterdir()), [])
+
+    def test_caption_api_validation_and_compatibility(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"SM_ADMIN_PASSWORD": "test-password"}):
+            path = Path(directory) / "profiles.json"
+            auth = ("admin", "test-password")
+            with TestClient(create_app(path, result_path=Path(directory) / "missing.sqlite3")) as client:
+                image = client.post("/api/admin/sponsors", json={"name": "Logo.png", "data": PNG}, auth=auth).json()
+                url = "/api/admin/sponsors/" + image["id"]
+                self.assertEqual(client.put(url, json={"text": "", "top_text": ""}).status_code, 401)
+                self.assertEqual(client.put(url, auth=auth, json={"text": "", "top_text": ""},
+                                            headers={"Origin": "https://other.invalid"}).status_code, 403)
+                for field in ("text", "top_text"):
+                    for invalid in ("x" * 301, 123, None):
+                        payload = {"text": "Unten", "top_text": "Oben", field: invalid}
+                        self.assertEqual(client.put(url, auth=auth, json=payload).status_code, 422)
+                saved = client.put(url, auth=auth, json={"text": "Unten", "top_text": "Oben"}).json()
+                self.assertEqual((saved["top_text"], saved["text"]), ("Oben", "Unten"))
+                saved = client.put(url, auth=auth, json={"text": "Neu"}).json()
+                self.assertEqual((saved["top_text"], saved["text"]), ("Oben", "Neu"))
+                self.assertEqual(client.get("/api/snapshot").json()["sponsors"], [saved])
+                with patch("app.sponsors.os.replace", side_effect=OSError("disk unavailable")):
+                    self.assertEqual(client.put(url, auth=auth, json={"text": "Lost", "top_text": "Lost"}).status_code, 503)
+                self.assertEqual(client.get("/api/admin/sponsors", auth=auth).json(), [saved])
+            with TestClient(create_app(path, result_path=Path(directory) / "missing.sqlite3")) as client:
+                self.assertEqual(client.get("/api/snapshot").json()["sponsors"], [saved])
+                cleared = client.put(url, auth=auth, json={"text": "", "top_text": ""}).json()
+                self.assertEqual((cleared["top_text"], cleared["text"]), ("", ""))
+
     def test_validation_and_atomic_persistence(self):
         with tempfile.TemporaryDirectory() as directory:
             store = SponsorStore(directory)

@@ -22,13 +22,14 @@ from .profiles import Profile, ProfileStore
 from .publication import PublicationConfig, PublicationStore, SFTPPublisher, publication_failure, publish
 from .resource_saver import (PRESENCE_HEARTBEAT_SECONDS, ResourceSaverSettings,
                              ResourceSaverStore, atomic_json, read_json)
-from .sponsors import IMAGE_POLICY, MAX_REQUEST_BYTES, TYPES, LogoStore, SponsorStore
+from .sponsors import DEFAULT_SPONSOR_TOP_TEXT, IMAGE_POLICY, MAX_REQUEST_BYTES, TYPES, LogoStore, SponsorStore
 from .storage import connect_reader, read_snapshot
 
 
 class SponsorText(BaseModel):
     model_config = ConfigDict(extra="forbid")
     text: str = Field(max_length=300)
+    top_text: str = Field(default=DEFAULT_SPONSOR_TOP_TEXT, max_length=300)
 
 
 class Runtime:
@@ -419,7 +420,8 @@ def create_app(profile_path=None, *, result_path=None):
     async def edit_sponsor_text(image_id: str, payload: SponsorText, request: Request):
         runtime = request.app.state.runtime
         try:
-            image = await asyncio.to_thread(runtime.sponsors.set_text, image_id, payload.text)
+            image = await asyncio.to_thread(runtime.sponsors.set_text, image_id, payload.text,
+                                           payload.top_text if "top_text" in payload.model_fields_set else None)
         except FileNotFoundError:
             raise HTTPException(404, "Bild nicht gefunden")
         except OSError:

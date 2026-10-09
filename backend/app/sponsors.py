@@ -16,6 +16,7 @@ MAX_IMAGE_BYTES = 5 * 1024 * 1024
 MAX_REQUEST_BYTES = MAX_IMAGE_BYTES * 4 // 3 + 2048
 IMAGE_POLICY = "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'"
 TYPES = {"png": "image/png", "jpg": "image/jpeg", "svg": "image/svg+xml"}
+DEFAULT_SPONSOR_TOP_TEXT = "mit freundlicher Unterstützung durch"
 
 
 def image_data(encoded):
@@ -119,8 +120,13 @@ class SponsorStore:
             except FileNotFoundError:
                 continue
             text_path = path.with_name(path.name + ".txt")
+            captions_path = path.with_name(path.name + ".json")
+            captions = json.loads(captions_path.read_text(encoding="utf-8")) if captions_path.exists() else {
+                "top_text": DEFAULT_SPONSOR_TOP_TEXT,
+                "text": text_path.read_text(encoding="utf-8") if text_path.exists() else "",
+            }
             images.append({"id": path.name, "name": path.name.split("_", 1)[1],
-                           "text": text_path.read_text(encoding="utf-8") if text_path.exists() else "",
+                           "top_text": captions["top_text"], "text": captions["text"],
                            "url": "/api/sponsors/" + quote(path.name)})
         return images
 
@@ -137,12 +143,16 @@ class SponsorStore:
             self.images = self.list()
             return next(image for image in self.images if image["id"] == image_id)
 
-    def set_text(self, image_id, text):
-        if not isinstance(text, str) or len(text) > 300:
+    def set_text(self, image_id, text, top_text=None):
+        if (not isinstance(text, str) or len(text) > 300 or
+                (top_text is not None and (not isinstance(top_text, str) or len(top_text) > 300))):
             raise ValueError("Sponsorentext darf höchstens 300 Zeichen lang sein")
         with self.lock:
             path = self.path(image_id)
-            write_file(path.with_name(path.name + ".txt"), text.strip().encode("utf-8"))
+            if top_text is None:
+                top_text = next(image for image in self.images if image["id"] == image_id)["top_text"]
+            captions = {"top_text": top_text.strip(), "text": text.strip()}
+            write_file(path.with_name(path.name + ".json"), json.dumps(captions, ensure_ascii=False).encode("utf-8"))
             self.images = self.list()
             return next(image for image in self.images if image["id"] == image_id)
 
@@ -150,4 +160,5 @@ class SponsorStore:
         with self.lock:
             self.path(image_id).unlink()
             (self.directory / (image_id + ".txt")).unlink(missing_ok=True)
+            (self.directory / (image_id + ".json")).unlink(missing_ok=True)
             self.images = self.list()
