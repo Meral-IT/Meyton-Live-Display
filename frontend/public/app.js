@@ -225,7 +225,7 @@ function render(snapshot, liveUpdate = false) {
     const card = grid.querySelector(`[data-lane="${lane}"]`);
     if (card) {
       const bounds = card.getBoundingClientRect();
-      window.confetti({size: 2, position: {x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 3}, fade: true});
+      window.confetti({size: 3, position: {x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 3}, fade: false });
     }
   }
   const connected = Object.entries(snapshot.sources).every(([name, source]) => source.state === "connected" || (name === "sdf" && source.state === "disabled"));
