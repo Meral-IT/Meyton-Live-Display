@@ -80,6 +80,7 @@ def main():
                 route.fulfill(body=file.read_bytes(), content_type=mime.get(file.suffix, "text/plain"))
 
         page.route("**/*", respond)
+        page.clock.install()
 
         def choices():
             return page.locator(".range-tile:has(.sponsor-image)").evaluate_all("nodes => Object.fromEntries(nodes.map(n => [n.dataset.lane, n.querySelector('.sponsor-image').getAttribute('src')]))")
@@ -101,6 +102,17 @@ def main():
         assert sorted(Counter(before.values()).values()) == [1, 2, 2]
         for _ in range(5):
             assert update() == before
+        page.clock.run_for(1000)
+        assert choices() == before
+        urls = [image["url"] for image in snapshot["sponsors"]]
+        for step in range(1, len(urls) + 1):
+            page.clock.run_for(15000)
+            assert balanced() == {lane: urls[(urls.index(url) + step) % len(urls)]
+                                  for lane, url in before.items()}
+            for lane, url in choices().items():
+                card = page.locator(f'[data-lane="{lane}"]')
+                assert card.locator(".sponsor-caption").last.inner_text() == f"Sponsor {urls.index(url)}"
+        assert choices() == before
         # Removing the singleton's stand requires exactly one reassignment.
         singleton = next(url for url, count in Counter(before.values()).items() if count == 1)
         lane = int(next(lane for lane, url in before.items() if url == singleton))
@@ -110,6 +122,10 @@ def main():
         assert len(after) == 4 and str(lane) not in after
         assert sum(before[lane] != url for lane, url in after.items()) == 1
         assert page.locator(f'[data-lane="{lane}"] svg').count() == 1
+        page.locator(f'[data-lane="{lane}"]').evaluate("node => window.activeCard = node")
+        page.clock.run_for(15000)
+        assert page.locator(f'[data-lane="{lane}"]').evaluate("node => node === window.activeCard")
+        balanced()
         entry["target"] = None
         update()
         snapshot["profile"]["hide_unavailable"] = True
@@ -127,6 +143,9 @@ def main():
         assert "/api/sponsors/0" not in update().values()
         snapshot["sponsors"] = copy.deepcopy(sponsors[:1])
         assert len(set(update().values())) == 1
+        before = choices()
+        page.clock.run_for(30000)
+        assert choices() == before
         snapshot["sponsors"][0].pop("top_text")
         update()
         assert page.locator(".sponsor-caption").first.inner_text() == DEFAULT_SPONSOR_TOP_TEXT
@@ -135,6 +154,8 @@ def main():
         assert page.locator(".sponsor-caption").count() == 0
         snapshot["sponsors"] = []
         assert update() == {}
+        page.clock.run_for(15000)
+        assert choices() == {}
         assert page.locator(".empty-symbol").count() == 5
         assert page.locator(".target-empty p").first.evaluate("n => parseFloat(getComputedStyle(n).fontSize)") >= 20
         snapshot["sponsors"] = sponsors
@@ -170,6 +191,13 @@ def main():
         page.goto("http://meyton.test/range/1?obs=2")
         page.wait_for_selector(".sponsor-image")
         assert page.locator(".sponsor-image").count() == 1
+        first = choices()["1"]
+        seen = {first}
+        for _ in range(len(sponsors)):
+            page.clock.run_for(15000)
+            seen.add(choices()["1"])
+        assert seen == {image["url"] for image in sponsors}
+        assert choices()["1"] == first
         assert page.locator(".target-empty p").evaluate("n => parseFloat(getComputedStyle(n).fontSize)") == 48
 
         snapshot["profile"]["rows"] = [list(range(start, start + 3)) for start in (1, 4, 7, 10)]
@@ -217,7 +245,7 @@ def main():
         assert item.get_by_label("Text unten", exact=True).input_value() == ""
         assert not errors, errors
         browser.close()
-    print("Empty-stand checks passed: captions, balance, stability, occupancy, visibility, sponsor changes and responsive/OBS/preview layouts.")
+    print("Empty-stand checks passed: captions, balance, cyclic rotation, occupancy, visibility, sponsor changes and responsive/OBS/preview layouts.")
 
 
 if __name__ == "__main__":

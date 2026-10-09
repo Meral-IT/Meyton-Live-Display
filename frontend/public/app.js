@@ -18,6 +18,7 @@ let previewSnapshot;
 let profiles = [];
 let ruleCatalogRevision;
 const sponsorChoices = new Map();
+let rotateSponsors = () => {};
 const shotHighlights = new Map();
 const params = new URLSearchParams(location.search);
 const range = location.pathname.startsWith("/range/") ? Number(location.pathname.split("/")[2]) : null;
@@ -202,6 +203,16 @@ function render(snapshot, liveUpdate = false) {
   const rows = profile.rows.map(row => row.filter(lane => !profile.hide_unavailable || !liveConnected ||
     ["free", "occupied"].includes(known.get(lane)?.occupancy))).filter(row => row.length);
   assignSponsors(rows.flat().filter(lane => !known.get(lane)?.target), snapshot.sponsors || []);
+  rotateSponsors = () => {
+    const sponsors = snapshot.sponsors || [];
+    if (sponsors.length < 2) return;
+    for (const [lane, id] of sponsorChoices) {
+      const next = (sponsors.findIndex(image => image.id === id) + 1) % sponsors.length;
+      sponsorChoices.set(lane, sponsors[next].id);
+      grid.querySelector(`[data-lane="${lane}"]`)?.replaceWith(
+        tile(known.get(lane) || {lane, target: null}, profile, sponsors));
+    }
+  };
   grid.style.gridTemplateRows = rows.length ? `repeat(${rows.length}, minmax(0, 1fr))` : "none";
   grid.replaceChildren(...rows.map(row => {
     const nodes = element("section", "range-row");
@@ -339,6 +350,7 @@ if (preview) window.addEventListener("message", event => {
 function clock() { document.getElementById("clock").textContent = new Date().toLocaleTimeString("de-DE", {timeZone: "Europe/Berlin"}); }
 clock();
 setInterval(clock, 1000);
+setInterval(() => rotateSponsors(), 15000);
 if (publicDisplay) {
   document.querySelector('a[href="/admin"]')?.remove();
   setInterval(publicationStatus, 1000);
