@@ -187,11 +187,14 @@ function render(snapshot, liveUpdate = false) {
     const key = state?.shot_count ? JSON.stringify([state.id, state.position, state.shot_count, state.last_shot_at]) : null;
     const previous = shotHighlights.get(entry.lane);
     const seen = previous && previous.targetId === state?.id ? previous.seen : new Set();
+    const latest = state?.latest;
+    const latestKey = latest && JSON.stringify([latest.position, latest.number, latest.timestamp]);
+    // Only the displayed shot can celebrate; older scores may arrive in the same update.
+    if (liveUpdate && previous && latest && !seen.has(latestKey) && profile.confetti_enabled && !latest.invalid &&
+        latest.score && ["Ring", "ZehntelRing"].includes(latest.score.unit) &&
+        latest.score.value / latest.score.scale >= (profile.confetti_threshold ?? 10.5)) celebrations.push(entry.lane);
     for (const hit of [...(state?.shots || []), ...(state?.latest ? [state.latest] : [])]) {
       const hitKey = JSON.stringify([hit.position, hit.number, hit.timestamp]);
-      if (liveUpdate && previous && !seen.has(hitKey) && profile.confetti_enabled && !hit.invalid &&
-          hit.score && ["Ring", "ZehntelRing"].includes(hit.score.unit) &&
-          hit.score.value / hit.score.scale >= (profile.confetti_threshold ?? 10.5)) celebrations.push(entry.lane);
       // A new concealed shot can qualify later when SSMDB2 confirms its score.
       if (!liveUpdate || !profile.confetti_enabled || hit.score || hit.invalid) seen.add(hitKey);
     }

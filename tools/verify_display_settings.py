@@ -7,6 +7,7 @@ from urllib.parse import urlsplit
 from playwright.sync_api import sync_playwright
 
 from verify_browser import example, seeds
+from app.publication import PublicationConfig
 
 
 def main():
@@ -68,6 +69,9 @@ def main():
                     resource["settings"] = route.request.post_data_json
                     resource["status"].update(resource["settings"])
                 route.fulfill(json=resource)
+            elif path == "/api/admin/settings/publication":
+                route.fulfill(json={"settings": {**PublicationConfig().model_dump(exclude={"password"}), "password_set": False},
+                                    "status": {"state": "disabled", "last_success_at": None}})
             elif path == "/api/snapshot":
                 route.fulfill(json=data)
             else:
@@ -173,6 +177,7 @@ def main():
 
         data["profile"].update(hide_unavailable=False, confetti_enabled=True, confetti_threshold=10.5)
         data["rows"][0][1]["target"] = None
+        target["target_rule"] = "0111"
         page.goto("http://meyton.test/display/alles?obs=2")
         page.wait_for_selector(".range-tile")
         assert page.locator("canvas").count() == 0  # Initial qualifying scores remain quiet.
@@ -229,20 +234,40 @@ def main():
         shoot(108)
         shoot(102)
         live()
-        assert page.evaluate("bursts.length") == 5  # Coalesced snapshots still celebrate each candidate.
+        assert page.evaluate("bursts.length") == 3  # Earlier tens must not celebrate the displayed 10.2.
         page.emulate_media(reduced_motion="reduce")
         shoot(109)
         live()
-        assert page.evaluate("bursts.length") == 5
+        assert page.evaluate("bursts.length") == 3
         page.emulate_media(reduced_motion="no-preference")
         shoot(109, score=None)
         live()
-        assert page.evaluate("bursts.length") == 5
+        assert page.evaluate("bursts.length") == 3
         target["latest"]["score"] = {"value": 109, "scale": 10, "unit": "ZehntelRing"}
         live()
-        assert page.evaluate("bursts.length") == 6  # Delayed score confirmation can celebrate a new shot.
+        assert page.evaluate("bursts.length") == 4  # Delayed confirmation can celebrate the latest shot.
         live()
-        assert page.evaluate("bursts.length") == 6
+        assert page.evaluate("bursts.length") == 4
+
+        data["profile"]["confetti_threshold"] = 10
+        for value in (95, 98):
+            shoot(value, x_mm=0, y_mm=0, whole_score={"value": 100, "scale": 10, "unit": "Ring"})
+            live()
+            assert page.locator('[data-lane="1"] .last-score strong').inner_text() == f"9,{value % 10}"
+            assert page.evaluate("bursts.length") == 4  # Official decimal score wins over geometry and whole rings.
+        shoot(100)
+        live()
+        assert page.evaluate("bursts.length") == 5
+        shoot(109, score=None)
+        unconfirmed = target["latest"]
+        live()
+        shoot(95)
+        live()
+        assert page.evaluate("bursts.length") == 5
+        unconfirmed["score"] = {"value": 109, "scale": 10, "unit": "ZehntelRing"}
+        live()
+        assert page.locator('[data-lane="1"] .last-score strong').inner_text() == "9,5"
+        assert page.evaluate("bursts.length") == 5  # An older confirmed ten cannot celebrate the current 9.5.
 
         page.goto("http://meyton.test/admin")
         page.wait_for_selector(".profile-choice")
@@ -250,6 +275,7 @@ def main():
         page.locator("#hide-unavailable").check()
         page.locator("#confetti-enabled").check()
         page.locator("#confetti-threshold").fill("10.9")
+        page.locator(".discipline-settings > summary").click()
         page.locator("#add-discipline").click()
         page.locator(".discipline-row").last.locator("input").fill("Vereins-LG")
         page.locator(".discipline-row").last.locator("select").select_option("0111")
@@ -260,6 +286,7 @@ def main():
         page.locator("#save-disciplines").click()
         page.locator("#discipline-status").get_by_text("Gespeichert · Anzeigen aktualisiert", exact=True).wait_for()
         assert {"name": "Vereins-LG", "rule": "0111"} not in disciplines["mappings"]
+        page.locator(".resource-saver-settings > summary").click()
         page.locator("#resource-saver-enabled").check()
         page.locator("#resource-saver-interval").fill("15")
         page.locator("#save-resource-saver").click()
