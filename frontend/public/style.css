@@ -16,7 +16,8 @@ input, select, textarea { border: 1px solid #c8d6d0; border-radius: 6px; backgro
 .brand-logo { display: none; width: auto; height: calc(var(--header-height) - 22px); max-width: clamp(160px, 25vw, 360px); object-fit: contain; }
 .custom-logo .brand-logo { display: block; }
 .custom-logo .brand-mark, .custom-logo .brand-title { display: none; }
-.display { height: 100dvh; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: var(--header-height) minmax(0, 1fr) 31px; overflow: hidden; }
+/* Older LG webOS browsers ignore dvh; keep a viewport height for their grid. */
+.display { height: 100vh; height: 100dvh; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: var(--header-height) minmax(0, 1fr) 31px; overflow: hidden; }
 .display-header, .editor-header { height: var(--header-height); display: flex; align-items: center; gap: 24px; padding: 10px 18px; background: var(--tile); border-bottom: 1px solid #d9e3de; }
 .display-title { display: flex; align-items: baseline; gap: 15px; flex: 1; min-width: 0; }
 h1 { font-size: 23px; margin: 0; line-height: 1.15; font-weight: 650; }
